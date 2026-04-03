@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -13,13 +14,13 @@ func main() {
 	configPath := flag.String("config", "./configs/config.json", "配置文件路径")
 	outputPath := flag.String("output", "", "临时覆盖输出文件路径")
 	mode := flag.String("mode", "", "临时覆盖渲染模式：replace_all 或 diff")
-	serve := flag.Bool("serve", false, "是否进入服务模式（当前阶段仅预留入口）")
+	serve := flag.Bool("serve", false, "是否进入服务模式")
 	listen := flag.String("listen", "", "临时覆盖服务监听地址")
 	logFile := flag.String("log-file", "", "临时覆盖日志文件路径")
 	flag.Parse()
 
 	fmt.Println("================================================")
-	fmt.Println("RouterOS Address List Tool - 配置存储层阶段")
+	fmt.Println("RouterOS Address List Tool - HTTP API 服务阶段")
 	fmt.Println("================================================")
 
 	wd, err := os.Getwd()
@@ -36,14 +37,14 @@ func main() {
 	}
 	fmt.Printf("准备读取配置文件: %s\n", absConfigPath)
 
-	// 先初始化配置存储层。
+	// 初始化配置存储层。
 	store, err := app.NewConfigStore(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化配置存储失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 从 store 中取出当前配置副本。
+	// 从 store 中取一份当前配置副本，用于本次运行。
 	cfg := store.GetConfig()
 
 	// 应用本次运行的临时命令行覆盖。
@@ -79,21 +80,39 @@ func main() {
 	logger.Printf("命令行参数覆盖结果：mode=%s output=%s log_file=%s serve=%v listen=%s",
 		cfg.Output.Mode, cfg.Output.Path, cfg.LogFile, *serve, cfg.Server.Listen)
 
+	// serve 模式：真正启动 HTTP API。
 	if *serve {
-		logger.Printf("当前已进入 serve 模式入口，但 HTTP 服务尚未在本步骤实现。listen=%s", cfg.Server.Listen)
+		handler := app.NewHTTPHandler(store, logger)
+
+		addr := cfg.Server.Listen
+		if addr == "" {
+			addr = ":8090"
+		}
+
+		logger.Printf("HTTP API 服务启动，监听地址：%s", addr)
 
 		fmt.Println()
-		fmt.Println("serve 模式入口已识别。")
-		fmt.Printf("当前监听地址配置为: %s\n", cfg.Server.Listen)
-		fmt.Println("HTTP API 服务将在后续步骤正式接入。")
+		fmt.Println("HTTP API 服务已启动。")
+		fmt.Printf("监听地址: %s\n", addr)
+		fmt.Println("可用接口：")
+		fmt.Println("  GET  /healthz")
+		fmt.Println("  GET  /api/v1/config")
+		fmt.Println("  POST /api/v1/render")
 
-		fmt.Println()
-		fmt.Println("第 9 步完成：配置存储层已落地。")
-		fmt.Println("下一步我们将实现 HTTP API 服务，并把它接到 serve 模式中。")
+		server := &http.Server{
+			Addr:    addr,
+			Handler: handler,
+		}
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Printf("HTTP 服务异常退出：%v", err)
+			fmt.Fprintf(os.Stderr, "HTTP 服务异常退出：%v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	// 正常执行单次渲染流程。
+	// 非 serve 模式下，继续执行单次渲染流程。
 	result, err := app.Execute(cfg, logger)
 	if err != nil {
 		logger.Printf("执行失败：%v", err)
@@ -113,6 +132,6 @@ func main() {
 	fmt.Println("------------------------------------------------")
 	fmt.Println(result.Script)
 
-	fmt.Println("第 9 步完成：配置存储层已落地。")
-	fmt.Println("下一步我们将实现 HTTP API 服务，并把它接到 serve 模式中。")
+	fmt.Println("第 10 步完成：HTTP API 服务已落地。")
+	fmt.Println("下一步我们将实现 address-list 管理接口（新增、修改、删除、description 管理）。")
 }
