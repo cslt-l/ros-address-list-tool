@@ -10,21 +10,6 @@ import (
 )
 
 func main() {
-	// 这一阶段开始，我们把命令行入口补完整。
-	//
-	// 这些参数分成两类：
-	// 1. 真正已经生效的参数：
-	//    -config
-	//    -output
-	//    -mode
-	//    -log-file
-	//
-	// 2. 先预留结构、下一步接入功能的参数：
-	//    -serve
-	//    -listen
-	//
-	// 这样做的目的，是先把 CLI 层定型，
-	// 后续做 HTTP API 时就不需要再反复改 main.go 的参数结构。
 	configPath := flag.String("config", "./configs/config.json", "配置文件路径")
 	outputPath := flag.String("output", "", "临时覆盖输出文件路径")
 	mode := flag.String("mode", "", "临时覆盖渲染模式：replace_all 或 diff")
@@ -34,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	fmt.Println("================================================")
-	fmt.Println("RouterOS Address List Tool - 完整 CLI 入口阶段")
+	fmt.Println("RouterOS Address List Tool - 配置存储层阶段")
 	fmt.Println("================================================")
 
 	wd, err := os.Getwd()
@@ -51,18 +36,17 @@ func main() {
 	}
 	fmt.Printf("准备读取配置文件: %s\n", absConfigPath)
 
-	// 第一步：先读取配置文件。
-	// 之所以先读配置，而不是直接初始化日志，
-	// 是因为日志文件路径通常来自配置。
-	cfg, err := app.LoadConfigFile(*configPath)
+	// 先初始化配置存储层。
+	store, err := app.NewConfigStore(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "初始化配置存储失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 第二步：用命令行参数临时覆盖配置。
-	// 这里一定要清楚：
-	// 这些覆盖只影响“本次运行”，不会回写到 config.json。
+	// 从 store 中取出当前配置副本。
+	cfg := store.GetConfig()
+
+	// 应用本次运行的临时命令行覆盖。
 	if *outputPath != "" {
 		cfg.Output.Path = *outputPath
 	}
@@ -76,7 +60,7 @@ func main() {
 		cfg.LogFile = *logFile
 	}
 
-	// 第三步：初始化日志器。
+	// 初始化日志器。
 	logger, closeFn, err := app.NewLogger(cfg.LogFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
@@ -91,13 +75,10 @@ func main() {
 	logger.Printf("程序启动")
 	logger.Printf("当前工作目录：%s", wd)
 	logger.Printf("配置文件路径：%s", absConfigPath)
+	logger.Printf("配置存储层初始化成功")
 	logger.Printf("命令行参数覆盖结果：mode=%s output=%s log_file=%s serve=%v listen=%s",
 		cfg.Output.Mode, cfg.Output.Path, cfg.LogFile, *serve, cfg.Server.Listen)
 
-	// 这一阶段先把 serve 模式入口立住，
-	// 但不真正启动 HTTP 服务。
-	// 下一阶段做完 store 和 server 后，
-	// 这里会直接接入 HTTP API 监听。
 	if *serve {
 		logger.Printf("当前已进入 serve 模式入口，但 HTTP 服务尚未在本步骤实现。listen=%s", cfg.Server.Listen)
 
@@ -107,12 +88,12 @@ func main() {
 		fmt.Println("HTTP API 服务将在后续步骤正式接入。")
 
 		fmt.Println()
-		fmt.Println("第 8 步完成：完整 CLI 入口已落地。")
-		fmt.Println("下一步我们将实现配置持久化存储层，为后续 HTTP API 和 Web 管理端做准备。")
+		fmt.Println("第 9 步完成：配置存储层已落地。")
+		fmt.Println("下一步我们将实现 HTTP API 服务，并把它接到 serve 模式中。")
 		return
 	}
 
-	// 非 serve 模式下，继续执行单次渲染流程。
+	// 正常执行单次渲染流程。
 	result, err := app.Execute(cfg, logger)
 	if err != nil {
 		logger.Printf("执行失败：%v", err)
@@ -132,6 +113,6 @@ func main() {
 	fmt.Println("------------------------------------------------")
 	fmt.Println(result.Script)
 
-	fmt.Println("第 8 步完成：完整 CLI 入口已落地。")
-	fmt.Println("下一步我们将实现配置持久化存储层，为后续 HTTP API 和 Web 管理端做准备。")
+	fmt.Println("第 9 步完成：配置存储层已落地。")
+	fmt.Println("下一步我们将实现 HTTP API 服务，并把它接到 serve 模式中。")
 }
