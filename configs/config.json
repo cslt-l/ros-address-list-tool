@@ -1,9 +1,55 @@
 {
+  "auto_create_lists": true,
   "log_file": "./logs/app.log",
+  "lists": [
+    {
+      "name": "toWanTelecom",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "电信出口地址列表"
+    },
+    {
+      "name": "toWanMobile",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "移动出口地址列表"
+    },
+    {
+      "name": "toWanUnicom",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "联通出口地址列表"
+    },
+    {
+      "name": "toWanGlobal",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "国际出口地址列表"
+    },
+    {
+      "name": "toPccBalance",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "PCC 均衡地址列表"
+    },
+    {
+      "name": "toWanIpv6",
+      "family": "ipv6",
+      "enabled": true,
+      "description": "IPv6 专用出口地址列表"
+    }
+  ],
+  "desired_sources": [],
+  "current_state_sources": [],
+  "manual_rules": [],
   "output": {
-    "path": "./output/routeros-address-list.rsc"
+    "path": "./output/routeros-address-list.rsc",
+    "mode": "replace_all",
+    "managed_comment": "managed-by-go"
   },
   "server": {
-    "listen": ":8090"
+    "listen": ":8090",
+    "enable_web": true,
+    "web_dir": "./web/dist"
   }
 }
