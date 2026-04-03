@@ -44,17 +44,17 @@
       "name": "desired-local-1",
       "type": "file",
       "path": "./data/desired-1.json",
+      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 100,
-      "timeout_seconds": 15
+      "priority": 100
     },
     {
       "name": "desired-local-2",
       "type": "file",
       "path": "./data/desired-2.json",
+      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 110,
-      "timeout_seconds": 15
+      "priority": 110
     }
   ],
   "current_state_sources": [
@@ -62,9 +62,9 @@
       "name": "current-local",
       "type": "file",
       "path": "./data/current.json",
+      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 100,
-      "timeout_seconds": 15
+      "priority": 100
     }
   ],
   "manual_rules": [
