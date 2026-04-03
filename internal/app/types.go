@@ -350,6 +350,20 @@ type SourcePayload struct {
 	Lists []SourceList `json:"lists"`
 }
 
+// LoadedSource 表示一个已经完成加载的来源。
+// 它把“来源配置”和“来源实际数据”绑定到一起，
+// 便于后续：
+// 1. 打日志时知道是哪一个 source
+// 2. 合并时保留 source 的优先级与来源身份
+// 3. HTTP API 或调试输出时展示加载结果
+type LoadedSource struct {
+	// Source 表示该加载结果对应的来源配置。
+	Source SourceConfig
+
+	// Lists 表示从该来源中解析出来的所有列表数据。
+	Lists []SourceList
+}
+
 // Snapshot 表示某一时刻程序视角下的 address-list 快照。
 // 它是后续“合并引擎”和“diff 渲染器”的核心输入。
 type Snapshot struct {

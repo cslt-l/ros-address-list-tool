@@ -39,8 +39,34 @@
       "description": "IPv6 专用出口地址列表"
     }
   ],
-  "desired_sources": [],
-  "current_state_sources": [],
+  "desired_sources": [
+    {
+      "name": "desired-local-1",
+      "type": "file",
+      "path": "./data/desired-1.json",
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "desired-local-2",
+      "type": "file",
+      "path": "./data/desired-2.json",
+      "enabled": true,
+      "priority": 110,
+      "timeout_seconds": 15
+    }
+  ],
+  "current_state_sources": [
+    {
+      "name": "current-local",
+      "type": "file",
+      "path": "./data/current.json",
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 15
+    }
+  ],
   "manual_rules": [],
   "output": {
     "path": "./output/routeros-address-list.rsc",

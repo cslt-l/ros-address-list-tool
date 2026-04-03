@@ -11,13 +11,12 @@ import (
 
 func main() {
 	// configPath 表示配置文件路径。
-	// 当前仍保留命令行参数形式，
-	// 是为了让程序在开发环境、测试环境、生产环境中都能方便切换配置。
+	// 保留为命令行参数，是为了方便不同环境使用不同配置文件。
 	configPath := flag.String("config", "./configs/config.json", "配置文件路径")
 	flag.Parse()
 
 	fmt.Println("================================================")
-	fmt.Println("RouterOS Address List Tool - 校验与规范化阶段")
+	fmt.Println("RouterOS Address List Tool - 多来源加载阶段")
 	fmt.Println("================================================")
 
 	// 输出当前工作目录，便于排查相对路径问题。
@@ -44,63 +43,21 @@ func main() {
 	}
 
 	// 对配置做正式校验。
-	// 这一层的职责是尽早发现“结构性错误”，
-	// 让后续 source、merge、render 都运行在可信输入之上。
 	if err := app.ValidateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "配置校验失败：\n%s\n", err.Error())
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("配置校验通过。当前配置摘要如下：")
-	fmt.Printf("- 自动创建未知 list: %v\n", cfg.AutoCreateLists)
-	fmt.Printf("- 日志文件路径: %s\n", cfg.LogFile)
-	fmt.Printf("- 默认输出路径: %s\n", cfg.Output.Path)
-	fmt.Printf("- 默认渲染模式: %s\n", cfg.Output.Mode)
-	fmt.Printf("- managed comment: %s\n", cfg.Output.ManagedComment)
-	fmt.Printf("- HTTP 监听地址: %s\n", cfg.Server.Listen)
-	fmt.Printf("- 是否启用 Web 静态目录: %v\n", cfg.Server.EnableWeb)
-	fmt.Printf("- Web 目录: %s\n", cfg.Server.WebDir)
+	fmt.Println("配置校验通过。")
 
-	fmt.Println()
-	fmt.Printf("已定义 address-list 数量: %d\n", len(cfg.Lists))
-	for i, item := range cfg.Lists {
-		fmt.Printf("  [%d] name=%s family=%s enabled=%v description=%s\n",
-			i+1, item.Name, item.Family, item.Enabled, item.Description)
-	}
-
-	fmt.Println()
-	fmt.Printf("目标来源 desired_sources 数量: %d\n", len(cfg.DesiredSources))
-	for i, src := range cfg.DesiredSources {
-		fmt.Printf("  [%d] name=%s type=%s enabled=%v priority=%d path=%s url=%s timeout=%d\n",
-			i+1, src.Name, src.Type, src.Enabled, src.Priority, src.Path, src.URL, src.TimeoutSeconds)
-	}
-
-	fmt.Println()
-	fmt.Printf("当前状态来源 current_state_sources 数量: %d\n", len(cfg.CurrentStateSources))
-	for i, src := range cfg.CurrentStateSources {
-		fmt.Printf("  [%d] name=%s type=%s enabled=%v priority=%d path=%s url=%s timeout=%d\n",
-			i+1, src.Name, src.Type, src.Enabled, src.Priority, src.Path, src.URL, src.TimeoutSeconds)
-	}
-
-	fmt.Println()
-	fmt.Printf("手工规则 manual_rules 数量: %d\n", len(cfg.ManualRules))
-	for i, rule := range cfg.ManualRules {
-		fmt.Printf("  [%d] id=%s list=%s action=%s enabled=%v priority=%d entries=%d description=%s\n",
-			i+1, rule.ID, rule.ListName, rule.Action, rule.Enabled, rule.Priority, len(rule.Entries), rule.Description)
-	}
-
-	// 为了验证“地址规范化与去重”这一步已经真正落地，
-	// 这里做一个非常小的演示。
-	//
-	// 说明：
-	// 这段演示不是最终业务逻辑的一部分，
-	// 它只是当前开发阶段用于验证 validate.go 能力是否正常工作的最小示例。
+	// 继续做一个“地址规范化与去重”的最小演示，
+	// 这样我们可以确认前一步的能力仍然正常。
 	demoEntries := []string{
-		"10.0.0.1/24", // 应规范化为 10.0.0.0/24
-		"10.0.0.0/24", // 与上面规范化后重复，应被去重
+		"10.0.0.1/24",
+		"10.0.0.0/24",
 		"1.1.1.1",
-		"1.1.1.1", // 重复，应被去重
+		"1.1.1.1",
 		"223.5.5.5",
 	}
 
@@ -110,12 +67,49 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println()
 	fmt.Println("地址规范化与去重示例（IPv4）：")
 	fmt.Printf("- 原始输入: %v\n", demoEntries)
 	fmt.Printf("- 规范化后: %v\n", normalizedEntries)
 
+	// 加载目标来源。
+	desiredLoaded, err := app.LoadSources(cfg.DesiredSources)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "加载 desired_sources 失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	// 加载当前状态来源。
+	currentLoaded, err := app.LoadSources(cfg.CurrentStateSources)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "加载 current_state_sources 失败：%v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Println()
-	fmt.Println("第 3 步完成：配置校验、地址合法性检查、去重与规范化已落地。")
-	fmt.Println("下一步我们将实现多来源数据加载器（支持多个本地 JSON 与多个 URL）。")
+	fmt.Printf("已成功加载 desired_sources：%d 个\n", len(desiredLoaded))
+	for i, loaded := range desiredLoaded {
+		fmt.Printf("  [%d] source=%s type=%s priority=%d loaded_lists=%d\n",
+			i+1, loaded.Source.Name, loaded.Source.Type, loaded.Source.Priority, len(loaded.Lists))
+
+		for j, list := range loaded.Lists {
+			fmt.Printf("      - [%d] list=%s entries=%d family=%s description=%s\n",
+				j+1, list.Name, len(list.Entries), list.Family, list.Description)
+		}
+	}
+
+	fmt.Println()
+	fmt.Printf("已成功加载 current_state_sources：%d 个\n", len(currentLoaded))
+	for i, loaded := range currentLoaded {
+		fmt.Printf("  [%d] source=%s type=%s priority=%d loaded_lists=%d\n",
+			i+1, loaded.Source.Name, loaded.Source.Type, loaded.Source.Priority, len(loaded.Lists))
+
+		for j, list := range loaded.Lists {
+			fmt.Printf("      - [%d] list=%s entries=%d family=%s description=%s\n",
+				j+1, list.Name, len(list.Entries), list.Family, list.Description)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("第 4 步完成：多来源数据加载器已落地。")
+	fmt.Println("下一步我们将实现合并引擎：把多个来源和手工规则收敛成最终快照。")
 }

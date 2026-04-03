@@ -1,0 +1,26 @@
+{
+  "lists": [
+    {
+      "name": "toWanTelecom",
+      "description": "来自本地文件 1 的电信地址",
+      "entries": [
+        "1.1.1.1",
+        "10.0.0.1/24"
+      ]
+    },
+    {
+      "name": "toWanMobile",
+      "entries": [
+        "100.64.0.0/10",
+        "8.8.8.8"
+      ]
+    },
+    {
+      "name": "toWanUnicom",
+      "entries": [
+        "61.135.169.125",
+        "123.125.114.144"
+      ]
+    }
+  ]
+}
