@@ -1,0 +1,9 @@
+{
+  "log_file": "./logs/app.log",
+  "output": {
+    "path": "./output/routeros-address-list.rsc"
+  },
+  "server": {
+    "listen": ":8090"
+  }
+}
