@@ -16,7 +16,7 @@ func main() {
 	flag.Parse()
 
 	fmt.Println("================================================")
-	fmt.Println("RouterOS Address List Tool - 合并引擎阶段")
+	fmt.Println("RouterOS Address List Tool - 渲染器阶段")
 	fmt.Println("================================================")
 
 	wd, err := os.Getwd()
@@ -47,7 +47,7 @@ func main() {
 	fmt.Println()
 	fmt.Println("配置校验通过。")
 
-	// 保留前一步的最小规范化演示，确保底层能力仍然工作正常。
+	// 保留最小规范化演示，确保基础能力仍然正常。
 	demoEntries := []string{
 		"10.0.0.1/24",
 		"10.0.0.0/24",
@@ -64,14 +64,12 @@ func main() {
 	fmt.Printf("- 原始输入: %v\n", demoEntries)
 	fmt.Printf("- 规范化后: %v\n", normalizedEntries)
 
-	// 构建目标快照。
 	desiredSnapshot, err := app.BuildDesiredSnapshot(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "构建目标快照失败：\n%s\n", err.Error())
 		os.Exit(1)
 	}
 
-	// 构建当前快照。
 	currentSnapshot, err := app.BuildCurrentSnapshot(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "构建当前快照失败：\n%s\n", err.Error())
@@ -86,21 +84,49 @@ func main() {
 	fmt.Println("当前快照（current snapshot）：")
 	printSnapshot(currentSnapshot)
 
+	// 用配置中的默认模式进行渲染。
+	script, err := app.RenderScript(
+		desiredSnapshot,
+		currentSnapshot,
+		cfg.Output.Mode,
+		cfg.Output.ManagedComment,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "渲染默认模式脚本失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	// 同时再额外生成一个 diff 预览，便于你比较两种模式。
+	diffScript, err := app.RenderScript(
+		desiredSnapshot,
+		currentSnapshot,
+		app.RenderModeDiff,
+		cfg.Output.ManagedComment,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "渲染 diff 脚本失败：%v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Println()
-	fmt.Println("第 5 步完成：合并引擎已落地。")
-	fmt.Println("下一步我们将实现渲染器：把快照变成 RouterOS 可导入的 .rsc 脚本。")
+	fmt.Printf("默认模式脚本输出（mode=%s）：\n", cfg.Output.Mode)
+	fmt.Println("------------------------------------------------")
+	fmt.Println(script)
+
+	fmt.Println("diff 模式脚本预览：")
+	fmt.Println("------------------------------------------------")
+	fmt.Println(diffScript)
+
+	fmt.Println("第 6 步完成：渲染器已落地。")
+	fmt.Println("下一步我们将实现执行引擎与日志：把脚本写到文件，并形成真正的单次执行流程。")
 }
 
-// printSnapshot 用于把 Snapshot 以稳定顺序打印出来。
-// 这个函数当前只服务于命令行演示，
-// 主要目的是让你能肉眼确认：
-// 1. 哪些 list 进入了快照
-// 2. 每个 list 最终有哪些条目
-//
-// 之所以单独抽成函数，是为了让 main 保持清晰，
-// 同时后续如果要做更丰富的 CLI 输出，也方便继续扩展。
+// printSnapshot 用于稳定打印 Snapshot。
+// 当前仍然保留“定义全集 + 条目列表”的展示方式，
+// 这样可以更清楚地看出：
+// - 哪些 list 已定义
+// - 哪些 list 当前没有条目
 func printSnapshot(s app.Snapshot) {
-	// 为了保证输出顺序稳定，先排序 list 名称。
 	var listNames []string
 	for name := range s.Definitions {
 		listNames = append(listNames, name)
