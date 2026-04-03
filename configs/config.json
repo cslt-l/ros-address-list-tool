@@ -67,7 +67,43 @@
       "timeout_seconds": 15
     }
   ],
-  "manual_rules": [],
+  "manual_rules": [
+    {
+      "id": "rule-telecom-add",
+      "list_name": "toWanTelecom",
+      "action": "add",
+      "priority": 1000,
+      "enabled": true,
+      "description": "手工强制加入电信地址",
+      "entries": [
+        "223.5.5.5",
+        "223.6.6.6"
+      ]
+    },
+    {
+      "id": "rule-global-remove",
+      "list_name": "toWanGlobal",
+      "action": "remove",
+      "priority": 2000,
+      "enabled": true,
+      "description": "手工强制移除某个全球地址",
+      "entries": [
+        "8.8.4.4"
+      ]
+    },
+    {
+      "id": "rule-ipv6-add",
+      "list_name": "toWanIpv6",
+      "action": "add",
+      "priority": 1000,
+      "enabled": true,
+      "description": "手工加入 IPv6 地址",
+      "entries": [
+        "2400:3200::1",
+        "2400:3200::/32"
+      ]
+    }
+  ],
   "output": {
     "path": "./output/routeros-address-list.rsc",
     "mode": "replace_all",
