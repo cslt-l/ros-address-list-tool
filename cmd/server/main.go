@@ -5,18 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"ros-address-list-tool/internal/app"
 )
 
 func main() {
 	// configPath 表示配置文件路径。
+	// 当前阶段仍然只保留这一个命令行参数。
+	// 到下一步 CLI 阶段，我们会继续增加：
+	// - output 覆盖
+	// - mode 覆盖
+	// - serve 模式
 	configPath := flag.String("config", "./configs/config.json", "配置文件路径")
 	flag.Parse()
 
 	fmt.Println("================================================")
-	fmt.Println("RouterOS Address List Tool - 渲染器阶段")
+	fmt.Println("RouterOS Address List Tool - 执行引擎阶段")
 	fmt.Println("================================================")
 
 	wd, err := os.Getwd()
@@ -33,115 +37,50 @@ func main() {
 	}
 	fmt.Printf("准备读取配置文件: %s\n", absConfigPath)
 
+	// 先读取配置，主要是为了拿到日志路径。
 	cfg, err := app.LoadConfigFile(*configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "加载正式配置失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := app.ValidateConfig(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "配置校验失败：\n%s\n", err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Println()
-	fmt.Println("配置校验通过。")
-
-	// 保留最小规范化演示，确保基础能力仍然正常。
-	demoEntries := []string{
-		"10.0.0.1/24",
-		"10.0.0.0/24",
-		"1.1.1.1",
-		"1.1.1.1",
-		"223.5.5.5",
-	}
-	normalizedEntries, err := app.NormalizeAndDeduplicateEntries(demoEntries, app.FamilyIPv4)
+	// 初始化日志器。
+	logger, closeFn, err := app.NewLogger(cfg.LogFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "地址规范化示例失败：\n%s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("地址规范化与去重示例（IPv4）：")
-	fmt.Printf("- 原始输入: %v\n", demoEntries)
-	fmt.Printf("- 规范化后: %v\n", normalizedEntries)
-
-	desiredSnapshot, err := app.BuildDesiredSnapshot(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "构建目标快照失败：\n%s\n", err.Error())
-		os.Exit(1)
-	}
-
-	currentSnapshot, err := app.BuildCurrentSnapshot(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "构建当前快照失败：\n%s\n", err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Println()
-	fmt.Println("目标快照（desired snapshot）：")
-	printSnapshot(desiredSnapshot)
-
-	fmt.Println()
-	fmt.Println("当前快照（current snapshot）：")
-	printSnapshot(currentSnapshot)
-
-	// 用配置中的默认模式进行渲染。
-	script, err := app.RenderScript(
-		desiredSnapshot,
-		currentSnapshot,
-		cfg.Output.Mode,
-		cfg.Output.ManagedComment,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "渲染默认模式脚本失败：%v\n", err)
-		os.Exit(1)
-	}
-
-	// 同时再额外生成一个 diff 预览，便于你比较两种模式。
-	diffScript, err := app.RenderScript(
-		desiredSnapshot,
-		currentSnapshot,
-		app.RenderModeDiff,
-		cfg.Output.ManagedComment,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "渲染 diff 脚本失败：%v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println()
-	fmt.Printf("默认模式脚本输出（mode=%s）：\n", cfg.Output.Mode)
-	fmt.Println("------------------------------------------------")
-	fmt.Println(script)
-
-	fmt.Println("diff 模式脚本预览：")
-	fmt.Println("------------------------------------------------")
-	fmt.Println(diffScript)
-
-	fmt.Println("第 6 步完成：渲染器已落地。")
-	fmt.Println("下一步我们将实现执行引擎与日志：把脚本写到文件，并形成真正的单次执行流程。")
-}
-
-// printSnapshot 用于稳定打印 Snapshot。
-// 当前仍然保留“定义全集 + 条目列表”的展示方式，
-// 这样可以更清楚地看出：
-// - 哪些 list 已定义
-// - 哪些 list 当前没有条目
-func printSnapshot(s app.Snapshot) {
-	var listNames []string
-	for name := range s.Definitions {
-		listNames = append(listNames, name)
-	}
-	sort.Strings(listNames)
-
-	for _, name := range listNames {
-		def := s.Definitions[name]
-		entries := s.Entries[name]
-
-		fmt.Printf("- list=%s family=%s enabled=%v description=%s entries=%d\n",
-			def.Name, def.Family, def.Enabled, def.Description, len(entries))
-
-		for i, entry := range entries {
-			fmt.Printf("    [%d] %s\n", i+1, entry)
+	defer func() {
+		if closeFn != nil {
+			_ = closeFn()
 		}
+	}()
+
+	logger.Printf("程序启动")
+	logger.Printf("当前工作目录：%s", wd)
+	logger.Printf("配置文件路径：%s", absConfigPath)
+
+	// 统一调用执行引擎。
+	result, err := app.Execute(cfg, logger)
+	if err != nil {
+		logger.Printf("执行失败：%v", err)
+		fmt.Fprintf(os.Stderr, "执行失败：%v\n", err)
+		os.Exit(1)
 	}
+
+	// 打印最终结果摘要。
+	fmt.Println()
+	fmt.Println("执行结果摘要：")
+	fmt.Printf("- 渲染模式: %s\n", result.Mode)
+	fmt.Printf("- 目标 list 数量: %d\n", result.ListCount)
+	fmt.Printf("- 目标条目总数: %d\n", result.EntryCount)
+	fmt.Printf("- 输出文件: %s\n", result.OutputPath)
+
+	fmt.Println()
+	fmt.Println("已生成的 RouterOS 脚本内容：")
+	fmt.Println("------------------------------------------------")
+	fmt.Println(result.Script)
+
+	fmt.Println("第 7 步完成：执行引擎与日志已落地。")
+	fmt.Println("下一步我们将实现更完整的命令行入口：支持参数覆盖 output、mode，以及 serve 模式。")
 }
