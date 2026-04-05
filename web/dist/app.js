@@ -63,6 +63,8 @@ const desiredSourceURLInput = document.getElementById("desired-source-url");
 const desiredSourcePriorityInput = document.getElementById("desired-source-priority");
 const desiredSourceTimeoutInput = document.getElementById("desired-source-timeout");
 const desiredSourceEnabledInput = document.getElementById("desired-source-enabled");
+const desiredSourcePathHelp = document.getElementById("desired-source-path-help");
+const desiredSourceURLHelp = document.getElementById("desired-source-url-help");
 
 const currentSourceForm = document.getElementById("current-source-form");
 const currentSourceNameInput = document.getElementById("current-source-name");
@@ -72,6 +74,8 @@ const currentSourceURLInput = document.getElementById("current-source-url");
 const currentSourcePriorityInput = document.getElementById("current-source-priority");
 const currentSourceTimeoutInput = document.getElementById("current-source-timeout");
 const currentSourceEnabledInput = document.getElementById("current-source-enabled");
+const currentSourcePathHelp = document.getElementById("current-source-path-help");
+const currentSourceURLHelp = document.getElementById("current-source-url-help");
 
 const renderForm = document.getElementById("render-form");
 const renderModeSelect = document.getElementById("render-mode");
@@ -571,8 +575,6 @@ async function submitRuleForm(event) {
     }
 }
 
-// ===================== Sources 页面 =====================
-
 function resetDesiredSourceForm() {
     editingDesiredSourceName = "";
     desiredSourceForm.reset();
@@ -580,6 +582,7 @@ function resetDesiredSourceForm() {
     desiredSourcePriorityInput.value = "100";
     desiredSourceTimeoutInput.value = "15";
     desiredSourceEnabledInput.checked = true;
+    syncSourceTypeUI("desired");
 }
 
 function resetCurrentSourceForm() {
@@ -589,6 +592,7 @@ function resetCurrentSourceForm() {
     currentSourcePriorityInput.value = "100";
     currentSourceTimeoutInput.value = "15";
     currentSourceEnabledInput.checked = true;
+    syncSourceTypeUI("current");
 }
 
 async function loadDesiredSources() {
@@ -636,10 +640,11 @@ function renderSourceTable(targetBody, items, kind) {
     items.forEach((item) => {
         const tr = document.createElement("tr");
         const location = item.type === "url" ? item.url || "" : item.path || "";
+        const typeClass = item.type === "url" ? "source-type-badge url" : "source-type-badge";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
-      <td>${escapeHTML(item.type)}</td>
+      <td><span class="${typeClass}">${escapeHTML(item.type)}</span></td>
       <td>${escapeHTML(location)}</td>
       <td>${item.enabled ? "true" : "false"}</td>
       <td>${escapeHTML(String(item.priority ?? ""))}</td>
@@ -673,6 +678,7 @@ function fillDesiredSourceForm(item) {
     desiredSourcePriorityInput.value = String(item.priority ?? 100);
     desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
     desiredSourceEnabledInput.checked = Boolean(item.enabled);
+    syncSourceTypeUI("desired");
 }
 
 function fillCurrentSourceForm(item) {
@@ -684,6 +690,7 @@ function fillCurrentSourceForm(item) {
     currentSourcePriorityInput.value = String(item.priority ?? 100);
     currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
     currentSourceEnabledInput.checked = Boolean(item.enabled);
+    syncSourceTypeUI("current");
 }
 
 async function editSource(kind, name) {
@@ -736,6 +743,45 @@ async function deleteSource(kind, name) {
     }
 }
 
+function syncSourceTypeUI(kind) {
+    const isDesired = kind === "desired";
+
+    const typeSelect = isDesired ? desiredSourceTypeSelect : currentSourceTypeSelect;
+    const pathInput = isDesired ? desiredSourcePathInput : currentSourcePathInput;
+    const urlInput = isDesired ? desiredSourceURLInput : currentSourceURLInput;
+    const pathHelp = isDesired ? desiredSourcePathHelp : currentSourcePathHelp;
+    const urlHelp = isDesired ? desiredSourceURLHelp : currentSourceURLHelp;
+
+    const currentType = typeSelect.value;
+
+    if (currentType === "file") {
+        pathInput.disabled = false;
+        urlInput.disabled = true;
+
+        pathInput.placeholder = "./data/source.json";
+        urlInput.placeholder = "当前 file 模式下无需填写 URL";
+
+        pathHelp.textContent = "当前为 file 模式，请填写本地路径。";
+        pathHelp.classList.remove("field-help-muted");
+
+        urlHelp.textContent = "当前 file 模式下 URL 输入已禁用。";
+        urlHelp.classList.add("field-help-muted");
+        return
+    }
+
+    pathInput.disabled = true;
+    urlInput.disabled = false;
+
+    pathInput.placeholder = "当前 url 模式下无需填写 Path";
+    urlInput.placeholder = "https://example.com/source.json";
+
+    pathHelp.textContent = "当前 url 模式下 Path 输入已禁用。";
+    pathHelp.classList.add("field-help-muted");
+
+    urlHelp.textContent = "当前为 url 模式，请填写远程地址。";
+    urlHelp.classList.remove("field-help-muted");
+}
+
 function buildSourcePayload(kind) {
     const isDesired = kind === "desired";
 
@@ -754,8 +800,8 @@ function buildSourcePayload(kind) {
     return {
         name,
         type,
-        path: path || undefined,
-        url: url || undefined,
+        path: type === "file" ? path || undefined : undefined,
+        url: type === "url" ? url || undefined : undefined,
         timeout_seconds: timeoutSeconds,
         enabled,
         priority
@@ -769,6 +815,16 @@ async function submitDesiredSourceForm(event) {
     const payload = buildSourcePayload("desired");
     if (!payload.name) {
         showMessage("Desired Source Name 不能为空。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.priority) || payload.priority < 0) {
+        showMessage("Desired Source Priority 必须是大于等于 0 的数字。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
+        showMessage("Desired Source Timeout Seconds 必须大于 0。", true);
         return;
     }
 
@@ -819,6 +875,16 @@ async function submitCurrentSourceForm(event) {
     const payload = buildSourcePayload("current");
     if (!payload.name) {
         showMessage("Current Source Name 不能为空。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.priority) || payload.priority < 0) {
+        showMessage("Current Source Priority 必须是大于等于 0 的数字。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
+        showMessage("Current Source Timeout Seconds 必须大于 0。", true);
         return;
     }
 
@@ -1088,6 +1154,14 @@ btnRefreshCurrentSources.addEventListener("click", () => {
 btnResetCurrentSourceForm.addEventListener("click", () => {
     resetCurrentSourceForm();
     showMessage("Current Source 表单已重置。");
+});
+
+desiredSourceTypeSelect.addEventListener("change", () => {
+    syncSourceTypeUI("desired");
+});
+
+currentSourceTypeSelect.addEventListener("change", () => {
+    syncSourceTypeUI("current");
 });
 
 btnResetRenderForm.addEventListener("click", () => {

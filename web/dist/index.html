@@ -29,7 +29,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：Sources 页面已接入真实后端</p>
+                <p>当前阶段：Sources 页面增加 type 联动与可用性优化</p>
             </div>
 
             <div class="topbar-actions">
@@ -375,11 +375,17 @@
                         <div class="form-row form-row-full">
                             <label for="desired-source-path">Path</label>
                             <input id="desired-source-path" type="text" placeholder="./data/desired-3.json" />
+                            <div id="desired-source-path-help" class="field-help">
+                                file 类型时请填写本地路径。
+                            </div>
                         </div>
 
                         <div class="form-row form-row-full">
                             <label for="desired-source-url">URL</label>
                             <input id="desired-source-url" type="text" placeholder="https://example.com/desired.json" />
+                            <div id="desired-source-url-help" class="field-help field-help-muted">
+                                url 类型时请填写可访问的远程地址。
+                            </div>
                         </div>
 
                         <div class="form-row">
@@ -458,11 +464,17 @@
                         <div class="form-row form-row-full">
                             <label for="current-source-path">Path</label>
                             <input id="current-source-path" type="text" placeholder="./data/current-2.json" />
+                            <div id="current-source-path-help" class="field-help">
+                                file 类型时请填写本地路径。
+                            </div>
                         </div>
 
                         <div class="form-row form-row-full">
                             <label for="current-source-url">URL</label>
                             <input id="current-source-url" type="text" placeholder="https://example.com/current.json" />
+                            <div id="current-source-url-help" class="field-help field-help-muted">
+                                url 类型时请填写可访问的远程地址。
+                            </div>
                         </div>
 
                         <div class="form-row">
