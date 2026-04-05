@@ -13,6 +13,11 @@ const btnResetListForm = document.getElementById("btn-reset-list-form");
 const btnRefreshRules = document.getElementById("btn-refresh-rules");
 const btnResetRuleForm = document.getElementById("btn-reset-rule-form");
 
+const btnRefreshDesiredSources = document.getElementById("btn-refresh-desired-sources");
+const btnResetDesiredSourceForm = document.getElementById("btn-reset-desired-source-form");
+const btnRefreshCurrentSources = document.getElementById("btn-refresh-current-sources");
+const btnResetCurrentSourceForm = document.getElementById("btn-reset-current-source-form");
+
 const btnResetRenderForm = document.getElementById("btn-reset-render-form");
 const btnClearRenderResult = document.getElementById("btn-clear-render-result");
 const btnCopyRenderScript = document.getElementById("btn-copy-render-script");
@@ -21,11 +26,15 @@ const healthStatusEl = document.getElementById("dashboard-health-status");
 const listCountEl = document.getElementById("dashboard-list-count");
 const ruleCountEl = document.getElementById("dashboard-rule-count");
 const renderModeEl = document.getElementById("dashboard-render-mode");
+const desiredSourceCountEl = document.getElementById("dashboard-desired-source-count");
+const currentSourceCountEl = document.getElementById("dashboard-current-source-count");
 const summaryListEl = document.getElementById("dashboard-summary-list");
 const configViewerEl = document.getElementById("config-json-viewer");
 
 const listsTableBody = document.getElementById("lists-table-body");
 const rulesTableBody = document.getElementById("rules-table-body");
+const desiredSourcesTableBody = document.getElementById("desired-sources-table-body");
+const currentSourcesTableBody = document.getElementById("current-sources-table-body");
 
 const listForm = document.getElementById("list-form");
 const listNameInput = document.getElementById("list-name");
@@ -46,6 +55,24 @@ const ruleEnabledInput = document.getElementById("rule-enabled");
 const ruleDescriptionInput = document.getElementById("rule-description");
 const ruleEntriesInput = document.getElementById("rule-entries");
 
+const desiredSourceForm = document.getElementById("desired-source-form");
+const desiredSourceNameInput = document.getElementById("desired-source-name");
+const desiredSourceTypeSelect = document.getElementById("desired-source-type");
+const desiredSourcePathInput = document.getElementById("desired-source-path");
+const desiredSourceURLInput = document.getElementById("desired-source-url");
+const desiredSourcePriorityInput = document.getElementById("desired-source-priority");
+const desiredSourceTimeoutInput = document.getElementById("desired-source-timeout");
+const desiredSourceEnabledInput = document.getElementById("desired-source-enabled");
+
+const currentSourceForm = document.getElementById("current-source-form");
+const currentSourceNameInput = document.getElementById("current-source-name");
+const currentSourceTypeSelect = document.getElementById("current-source-type");
+const currentSourcePathInput = document.getElementById("current-source-path");
+const currentSourceURLInput = document.getElementById("current-source-url");
+const currentSourcePriorityInput = document.getElementById("current-source-priority");
+const currentSourceTimeoutInput = document.getElementById("current-source-timeout");
+const currentSourceEnabledInput = document.getElementById("current-source-enabled");
+
 const renderForm = document.getElementById("render-form");
 const renderModeSelect = document.getElementById("render-mode");
 const renderOutputPathInput = document.getElementById("render-output-path");
@@ -58,8 +85,14 @@ const renderScriptViewerEl = document.getElementById("render-script-viewer");
 let currentConfig = null;
 let currentLists = [];
 let currentRules = [];
+let currentDesiredSources = [];
+let currentCurrentSources = [];
+
 let editingListName = "";
 let editingRuleId = "";
+let editingDesiredSourceName = "";
+let editingCurrentSourceName = "";
+
 let currentRenderResult = null;
 
 function setActiveSection(sectionId) {
@@ -155,6 +188,8 @@ function renderConfigToDashboard(config) {
     listCountEl.textContent = String(config.lists?.length ?? 0);
     ruleCountEl.textContent = String(config.manual_rules?.length ?? 0);
     renderModeEl.textContent = String(config.output?.mode ?? "-");
+    desiredSourceCountEl.textContent = String(config.desired_sources?.length ?? 0);
+    currentSourceCountEl.textContent = String(config.current_state_sources?.length ?? 0);
 
     const summaryItems = [
         `自动创建未知 list：${String(config.auto_create_lists)}`,
@@ -536,6 +571,341 @@ async function submitRuleForm(event) {
     }
 }
 
+// ===================== Sources 页面 =====================
+
+function resetDesiredSourceForm() {
+    editingDesiredSourceName = "";
+    desiredSourceForm.reset();
+    desiredSourceTypeSelect.value = "file";
+    desiredSourcePriorityInput.value = "100";
+    desiredSourceTimeoutInput.value = "15";
+    desiredSourceEnabledInput.checked = true;
+}
+
+function resetCurrentSourceForm() {
+    editingCurrentSourceName = "";
+    currentSourceForm.reset();
+    currentSourceTypeSelect.value = "file";
+    currentSourcePriorityInput.value = "100";
+    currentSourceTimeoutInput.value = "15";
+    currentSourceEnabledInput.checked = true;
+}
+
+async function loadDesiredSources() {
+    try {
+        const items = await apiFetch("/api/v1/sources/desired");
+        currentDesiredSources = Array.isArray(items) ? items : [];
+        renderSourceTable(desiredSourcesTableBody, currentDesiredSources, "desired");
+
+        if (currentConfig) {
+            currentConfig.desired_sources = currentDesiredSources;
+            renderConfigToDashboard(currentConfig);
+            renderConfigToViewer(currentConfig);
+        }
+    } catch (error) {
+        showMessage(`加载 Desired Sources 失败：${error.message}`, true);
+    }
+}
+
+async function loadCurrentSources() {
+    try {
+        const items = await apiFetch("/api/v1/sources/current");
+        currentCurrentSources = Array.isArray(items) ? items : [];
+        renderSourceTable(currentSourcesTableBody, currentCurrentSources, "current");
+
+        if (currentConfig) {
+            currentConfig.current_state_sources = currentCurrentSources;
+            renderConfigToDashboard(currentConfig);
+            renderConfigToViewer(currentConfig);
+        }
+    } catch (error) {
+        showMessage(`加载 Current Sources 失败：${error.message}`, true);
+    }
+}
+
+function renderSourceTable(targetBody, items, kind) {
+    targetBody.innerHTML = "";
+
+    if (!items.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="7" class="empty-cell">当前没有任何 source</td>`;
+        targetBody.appendChild(tr);
+        return;
+    }
+
+    items.forEach((item) => {
+        const tr = document.createElement("tr");
+        const location = item.type === "url" ? item.url || "" : item.path || "";
+
+        tr.innerHTML = `
+      <td>${escapeHTML(item.name)}</td>
+      <td>${escapeHTML(item.type)}</td>
+      <td>${escapeHTML(location)}</td>
+      <td>${item.enabled ? "true" : "false"}</td>
+      <td>${escapeHTML(String(item.priority ?? ""))}</td>
+      <td>${escapeHTML(String(item.timeout_seconds ?? ""))}</td>
+      <td>
+        <div class="inline-actions">
+          <button class="inline-link-btn" data-action="edit-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">编辑</button>
+          <button class="inline-link-btn danger" data-action="delete-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">删除</button>
+        </div>
+      </td>
+    `;
+
+        targetBody.appendChild(tr);
+    });
+}
+
+function findDesiredSourceByName(name) {
+    return currentDesiredSources.find((item) => item.name === name) || null;
+}
+
+function findCurrentSourceByName(name) {
+    return currentCurrentSources.find((item) => item.name === name) || null;
+}
+
+function fillDesiredSourceForm(item) {
+    editingDesiredSourceName = item.name || "";
+    desiredSourceNameInput.value = item.name || "";
+    desiredSourceTypeSelect.value = item.type || "file";
+    desiredSourcePathInput.value = item.path || "";
+    desiredSourceURLInput.value = item.url || "";
+    desiredSourcePriorityInput.value = String(item.priority ?? 100);
+    desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
+    desiredSourceEnabledInput.checked = Boolean(item.enabled);
+}
+
+function fillCurrentSourceForm(item) {
+    editingCurrentSourceName = item.name || "";
+    currentSourceNameInput.value = item.name || "";
+    currentSourceTypeSelect.value = item.type || "file";
+    currentSourcePathInput.value = item.path || "";
+    currentSourceURLInput.value = item.url || "";
+    currentSourcePriorityInput.value = String(item.priority ?? 100);
+    currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
+    currentSourceEnabledInput.checked = Boolean(item.enabled);
+}
+
+async function editSource(kind, name) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到 source：${name}`, true);
+        return;
+    }
+
+    if (kind === "desired") {
+        fillDesiredSourceForm(item);
+    } else {
+        fillCurrentSourceForm(item);
+    }
+
+    setActiveSection("sources-section");
+    showMessage(`已加载 ${name} 到 ${kind} source 编辑表单。`);
+}
+
+async function deleteSource(kind, name) {
+    const ok = window.confirm(`确定删除 ${kind} source "${name}" 吗？`);
+    if (!ok) return;
+
+    clearMessage();
+
+    const path =
+        kind === "desired"
+            ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
+            : `/api/v1/sources/current/${encodeURIComponent(name)}`;
+
+    try {
+        await apiFetch(path, { method: "DELETE" });
+
+        if (kind === "desired" && editingDesiredSourceName === name) {
+            resetDesiredSourceForm();
+        }
+        if (kind === "current" && editingCurrentSourceName === name) {
+            resetCurrentSourceForm();
+        }
+
+        await loadDesiredSources();
+        await loadCurrentSources();
+        await loadConfig();
+
+        showMessage(`已删除 ${kind} source：${name}`);
+    } catch (error) {
+        showMessage(`删除 source 失败：${error.message}`, true);
+    }
+}
+
+function buildSourcePayload(kind) {
+    const isDesired = kind === "desired";
+
+    const name = isDesired ? desiredSourceNameInput.value.trim() : currentSourceNameInput.value.trim();
+    const type = isDesired ? desiredSourceTypeSelect.value : currentSourceTypeSelect.value;
+    const path = isDesired ? desiredSourcePathInput.value.trim() : currentSourcePathInput.value.trim();
+    const url = isDesired ? desiredSourceURLInput.value.trim() : currentSourceURLInput.value.trim();
+    const priority = Number(
+        isDesired ? desiredSourcePriorityInput.value || 0 : currentSourcePriorityInput.value || 0
+    );
+    const timeoutSeconds = Number(
+        isDesired ? desiredSourceTimeoutInput.value || 0 : currentSourceTimeoutInput.value || 0
+    );
+    const enabled = isDesired ? desiredSourceEnabledInput.checked : currentSourceEnabledInput.checked;
+
+    return {
+        name,
+        type,
+        path: path || undefined,
+        url: url || undefined,
+        timeout_seconds: timeoutSeconds,
+        enabled,
+        priority
+    };
+}
+
+async function submitDesiredSourceForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const payload = buildSourcePayload("desired");
+    if (!payload.name) {
+        showMessage("Desired Source Name 不能为空。", true);
+        return;
+    }
+
+    if (payload.type === "file" && !payload.path) {
+        showMessage("file 类型 source 必须填写 path。", true);
+        return;
+    }
+
+    if (payload.type === "url" && !payload.url) {
+        showMessage("url 类型 source 必须填写 url。", true);
+        return;
+    }
+
+    try {
+        if (editingDesiredSourceName && editingDesiredSourceName === payload.name) {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(payload.name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已更新 desired source：${payload.name}`);
+        } else if (editingDesiredSourceName && editingDesiredSourceName !== payload.name) {
+            await apiFetch("/api/v1/sources/desired", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 desired source：${payload.name}`);
+        } else {
+            await apiFetch("/api/v1/sources/desired", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 desired source：${payload.name}`);
+        }
+
+        await loadDesiredSources();
+        await loadConfig();
+
+        editingDesiredSourceName = payload.name;
+    } catch (error) {
+        showMessage(`保存 desired source 失败：${error.message}`, true);
+    }
+}
+
+async function submitCurrentSourceForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const payload = buildSourcePayload("current");
+    if (!payload.name) {
+        showMessage("Current Source Name 不能为空。", true);
+        return;
+    }
+
+    if (payload.type === "file" && !payload.path) {
+        showMessage("file 类型 source 必须填写 path。", true);
+        return;
+    }
+
+    if (payload.type === "url" && !payload.url) {
+        showMessage("url 类型 source 必须填写 url。", true);
+        return;
+    }
+
+    try {
+        if (editingCurrentSourceName && editingCurrentSourceName === payload.name) {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(payload.name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已更新 current source：${payload.name}`);
+        } else if (editingCurrentSourceName && editingCurrentSourceName !== payload.name) {
+            await apiFetch("/api/v1/sources/current", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 current source：${payload.name}`);
+        } else {
+            await apiFetch("/api/v1/sources/current", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 current source：${payload.name}`);
+        }
+
+        await loadCurrentSources();
+        await loadConfig();
+
+        editingCurrentSourceName = payload.name;
+    } catch (error) {
+        showMessage(`保存 current source 失败：${error.message}`, true);
+    }
+}
+
+function bindSourceTableActions() {
+    desiredSourcesTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const kind = target.dataset.kind;
+        const encodedName = target.dataset.name;
+        if (!action || !kind || !encodedName) return;
+
+        const name = decodeURIComponent(encodedName);
+
+        if (action === "edit-source") {
+            await editSource(kind, name);
+            return;
+        }
+
+        if (action === "delete-source") {
+            await deleteSource(kind, name);
+        }
+    });
+
+    currentSourcesTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const kind = target.dataset.kind;
+        const encodedName = target.dataset.name;
+        if (!action || !kind || !encodedName) return;
+
+        const name = decodeURIComponent(encodedName);
+
+        if (action === "edit-source") {
+            await editSource(kind, name);
+            return;
+        }
+
+        if (action === "delete-source") {
+            await deleteSource(kind, name);
+        }
+    });
+}
+
 function resetRenderForm() {
     renderForm.reset();
     renderModeSelect.value = "";
@@ -700,6 +1070,26 @@ btnResetRuleForm.addEventListener("click", () => {
     showMessage("Rule 表单已重置。");
 });
 
+btnRefreshDesiredSources.addEventListener("click", () => {
+    clearMessage();
+    void loadDesiredSources().then(() => showMessage("Desired Sources 已刷新。"));
+});
+
+btnResetDesiredSourceForm.addEventListener("click", () => {
+    resetDesiredSourceForm();
+    showMessage("Desired Source 表单已重置。");
+});
+
+btnRefreshCurrentSources.addEventListener("click", () => {
+    clearMessage();
+    void loadCurrentSources().then(() => showMessage("Current Sources 已刷新。"));
+});
+
+btnResetCurrentSourceForm.addEventListener("click", () => {
+    resetCurrentSourceForm();
+    showMessage("Current Source 表单已重置。");
+});
+
 btnResetRenderForm.addEventListener("click", () => {
     resetRenderForm();
     showMessage("渲染参数已重置。");
@@ -726,17 +1116,28 @@ ruleForm.addEventListener("submit", (event) => {
     void submitRuleForm(event);
 });
 
+desiredSourceForm.addEventListener("submit", (event) => {
+    void submitDesiredSourceForm(event);
+});
+
+currentSourceForm.addEventListener("submit", (event) => {
+    void submitCurrentSourceForm(event);
+});
+
 renderForm.addEventListener("submit", (event) => {
     void submitRenderForm(event);
 });
 
 bindListTableActions();
 bindRuleTableActions();
+bindSourceTableActions();
 
 window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");
     resetListForm();
     resetRuleForm();
+    resetDesiredSourceForm();
+    resetCurrentSourceForm();
     resetRenderForm();
     clearRenderResult();
 
@@ -744,4 +1145,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadConfig();
     await loadLists();
     await loadRules();
+    await loadDesiredSources();
+    await loadCurrentSources();
 });

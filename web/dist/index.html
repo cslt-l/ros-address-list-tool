@@ -19,6 +19,7 @@
             <button class="nav-item active" data-section="dashboard-section">总览</button>
             <button class="nav-item" data-section="lists-section">Address Lists</button>
             <button class="nav-item" data-section="rules-section">Manual Rules</button>
+            <button class="nav-item" data-section="sources-section">Sources</button>
             <button class="nav-item" data-section="render-section">Render</button>
             <button class="nav-item" data-section="config-section">原始配置</button>
         </nav>
@@ -28,7 +29,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：页面收尾优化与可用性整理</p>
+                <p>当前阶段：Sources 页面已接入真实后端</p>
             </div>
 
             <div class="topbar-actions">
@@ -64,6 +65,18 @@
                 <div class="card">
                     <div class="card-title">默认渲染模式</div>
                     <div id="dashboard-render-mode" class="card-value">-</div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-title">Desired Sources 数量</div>
+                    <div id="dashboard-desired-source-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Current Sources 数量</div>
+                    <div id="dashboard-current-source-count" class="card-value">-</div>
                 </div>
             </div>
 
@@ -294,6 +307,181 @@
 
                         <div class="form-actions form-row-full">
                             <button id="btn-save-rule" type="submit" class="btn btn-primary">保存 Rule</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section id="sources-section" class="page-section">
+            <div class="section-header">
+                <h3>Sources</h3>
+                <p>支持管理 Desired Sources 与 Current State Sources。</p>
+            </div>
+
+            <div class="sources-grid">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>Desired Sources</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-desired-sources" class="btn btn-primary">刷新</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Path / URL</th>
+                                <th>Enabled</th>
+                                <th>Priority</th>
+                                <th>Timeout</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="desired-sources-table-body">
+                            <tr>
+                                <td colspan="7" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <hr class="divider" />
+
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Desired Source</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-desired-source-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="desired-source-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="desired-source-name">Name</label>
+                            <input id="desired-source-name" type="text" placeholder="例如 desired-local-3" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-type">Type</label>
+                            <select id="desired-source-type">
+                                <option value="file">file</option>
+                                <option value="url">url</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-path">Path</label>
+                            <input id="desired-source-path" type="text" placeholder="./data/desired-3.json" />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-url">URL</label>
+                            <input id="desired-source-url" type="text" placeholder="https://example.com/desired.json" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-priority">Priority</label>
+                            <input id="desired-source-priority" type="number" value="100" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-timeout">Timeout Seconds</label>
+                            <input id="desired-source-timeout" type="number" value="15" />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="desired-source-enabled">Enabled</label>
+                            <input id="desired-source-enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button type="submit" class="btn btn-primary">保存 Desired Source</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>Current Sources</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-current-sources" class="btn btn-primary">刷新</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Path / URL</th>
+                                <th>Enabled</th>
+                                <th>Priority</th>
+                                <th>Timeout</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="current-sources-table-body">
+                            <tr>
+                                <td colspan="7" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <hr class="divider" />
+
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Current Source</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-current-source-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="current-source-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="current-source-name">Name</label>
+                            <input id="current-source-name" type="text" placeholder="例如 current-local-2" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-type">Type</label>
+                            <select id="current-source-type">
+                                <option value="file">file</option>
+                                <option value="url">url</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="current-source-path">Path</label>
+                            <input id="current-source-path" type="text" placeholder="./data/current-2.json" />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="current-source-url">URL</label>
+                            <input id="current-source-url" type="text" placeholder="https://example.com/current.json" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-priority">Priority</label>
+                            <input id="current-source-priority" type="number" value="100" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-timeout">Timeout Seconds</label>
+                            <input id="current-source-timeout" type="number" value="15" />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="current-source-enabled">Enabled</label>
+                            <input id="current-source-enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button type="submit" class="btn btn-primary">保存 Current Source</button>
                         </div>
                     </form>
                 </div>
