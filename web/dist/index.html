@@ -27,7 +27,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：Address Lists 与 Manual Rules 页面已接入真实 CRUD</p>
+                <p>当前阶段：Address Lists、Manual Rules、Render 页面已接入真实后端</p>
             </div>
 
             <div class="topbar-actions">
@@ -306,16 +306,79 @@
         <section id="render-section" class="page-section">
             <div class="section-header">
                 <h3>Render</h3>
-                <p>下一步会在这里接入模式选择、渲染执行和脚本预览。</p>
+                <p>支持选择模式、临时输出路径，并直接查看脚本结果。</p>
             </div>
 
-            <div class="panel">
-                <h4>当前阶段说明</h4>
-                <p>
-                    下一步会接入：
-                    <code>POST /api/v1/render</code>，
-                    并支持选择 <code>replace_all</code> / <code>diff</code>。
-                </p>
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>渲染参数</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-render-form" class="btn">重置渲染参数</button>
+                        </div>
+                    </div>
+
+                    <form id="render-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="render-mode">Mode</label>
+                            <select id="render-mode" name="mode">
+                                <option value="">使用当前默认模式</option>
+                                <option value="replace_all">replace_all</option>
+                                <option value="diff">diff</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="render-output-path">临时输出路径</label>
+                            <input
+                                    id="render-output-path"
+                                    name="output_path"
+                                    type="text"
+                                    placeholder="例如 ./output/http-diff.rsc"
+                            />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-run-render" type="submit" class="btn btn-primary">执行渲染</button>
+                            <button id="btn-clear-render-result" type="button" class="btn">清空结果</button>
+                        </div>
+                    </form>
+
+                    <hr class="divider" />
+
+                    <div class="render-summary-grid">
+                        <div class="card compact-card">
+                            <div class="card-title">返回模式</div>
+                            <div id="render-result-mode" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">List 数量</div>
+                            <div id="render-result-list-count" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">条目总数</div>
+                            <div id="render-result-entry-count" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">输出路径</div>
+                            <div id="render-result-output-path" class="card-value compact-value">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>脚本结果</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-copy-render-script" class="btn">复制脚本</button>
+                        </div>
+                    </div>
+
+                    <pre id="render-script-viewer" class="json-viewer">尚未执行渲染</pre>
+                </div>
             </div>
         </section>
 

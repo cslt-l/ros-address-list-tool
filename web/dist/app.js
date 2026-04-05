@@ -13,6 +13,10 @@ const btnResetListForm = document.getElementById("btn-reset-list-form");
 const btnRefreshRules = document.getElementById("btn-refresh-rules");
 const btnResetRuleForm = document.getElementById("btn-reset-rule-form");
 
+const btnResetRenderForm = document.getElementById("btn-reset-render-form");
+const btnClearRenderResult = document.getElementById("btn-clear-render-result");
+const btnCopyRenderScript = document.getElementById("btn-copy-render-script");
+
 const healthStatusEl = document.getElementById("dashboard-health-status");
 const listCountEl = document.getElementById("dashboard-list-count");
 const ruleCountEl = document.getElementById("dashboard-rule-count");
@@ -42,11 +46,21 @@ const ruleEnabledInput = document.getElementById("rule-enabled");
 const ruleDescriptionInput = document.getElementById("rule-description");
 const ruleEntriesInput = document.getElementById("rule-entries");
 
+const renderForm = document.getElementById("render-form");
+const renderModeSelect = document.getElementById("render-mode");
+const renderOutputPathInput = document.getElementById("render-output-path");
+const renderResultModeEl = document.getElementById("render-result-mode");
+const renderResultListCountEl = document.getElementById("render-result-list-count");
+const renderResultEntryCountEl = document.getElementById("render-result-entry-count");
+const renderResultOutputPathEl = document.getElementById("render-result-output-path");
+const renderScriptViewerEl = document.getElementById("render-script-viewer");
+
 let currentConfig = null;
 let currentLists = [];
 let currentRules = [];
 let editingListName = "";
 let editingRuleId = "";
+let currentRenderResult = null;
 
 // ===================== 页面导航 =====================
 
@@ -538,6 +552,75 @@ async function submitRuleForm(event) {
     }
 }
 
+// ===================== Render 页面 =====================
+
+function resetRenderForm() {
+    renderForm.reset();
+    renderModeSelect.value = "";
+    renderOutputPathInput.value = "";
+}
+
+function clearRenderResult() {
+    currentRenderResult = null;
+    renderResultModeEl.textContent = "-";
+    renderResultListCountEl.textContent = "-";
+    renderResultEntryCountEl.textContent = "-";
+    renderResultOutputPathEl.textContent = "-";
+    renderScriptViewerEl.textContent = "尚未执行渲染";
+}
+
+function renderRenderResult(result) {
+    currentRenderResult = result;
+    renderResultModeEl.textContent = String(result.mode ?? "-");
+    renderResultListCountEl.textContent = String(result.list_count ?? "-");
+    renderResultEntryCountEl.textContent = String(result.entry_count ?? "-");
+    renderResultOutputPathEl.textContent = String(result.output_path ?? "-");
+    renderScriptViewerEl.textContent = result.script || "";
+}
+
+async function submitRenderForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const mode = renderModeSelect.value;
+    const outputPath = renderOutputPathInput.value.trim();
+
+    const payload = {};
+    if (mode) {
+        payload.mode = mode;
+    }
+    if (outputPath) {
+        payload.output_path = outputPath;
+    }
+
+    try {
+        const result = await apiFetch("/api/v1/render", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+
+        renderRenderResult(result);
+        showMessage("渲染执行成功。");
+    } catch (error) {
+        showMessage(`渲染执行失败：${error.message}`, true);
+    }
+}
+
+async function copyRenderScript() {
+    const text = renderScriptViewerEl.textContent || "";
+    if (!text || text === "尚未执行渲染") {
+        showMessage("当前没有可复制的脚本。", true);
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showMessage("脚本已复制到剪贴板。");
+    } catch (error) {
+        showMessage("复制失败，请手动复制。", true);
+    }
+}
+
 // ===================== 表格事件代理 =====================
 
 function bindListTableActions() {
@@ -637,6 +720,20 @@ btnResetRuleForm.addEventListener("click", () => {
     showMessage("Rule 表单已重置。");
 });
 
+btnResetRenderForm.addEventListener("click", () => {
+    resetRenderForm();
+    showMessage("渲染参数已重置。");
+});
+
+btnClearRenderResult.addEventListener("click", () => {
+    clearRenderResult();
+    showMessage("渲染结果已清空。");
+});
+
+btnCopyRenderScript.addEventListener("click", () => {
+    void copyRenderScript();
+});
+
 listForm.addEventListener("submit", (event) => {
     void submitListForm(event);
 });
@@ -649,6 +746,10 @@ ruleForm.addEventListener("submit", (event) => {
     void submitRuleForm(event);
 });
 
+renderForm.addEventListener("submit", (event) => {
+    void submitRenderForm(event);
+});
+
 bindListTableActions();
 bindRuleTableActions();
 
@@ -658,6 +759,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");
     resetListForm();
     resetRuleForm();
+    resetRenderForm();
+    clearRenderResult();
 
     await checkHealth();
     await loadConfig();

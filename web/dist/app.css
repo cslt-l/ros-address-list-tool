@@ -196,6 +196,14 @@ hr.divider {
     word-break: break-word;
 }
 
+.compact-card {
+    padding: 14px;
+}
+
+.compact-value {
+    font-size: 18px;
+}
+
 .panel {
     background: #ffffff;
     border-radius: 16px;
@@ -339,6 +347,12 @@ hr.divider {
     flex-wrap: wrap;
 }
 
+.render-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
 .muted {
     color: #6b7280;
     font-size: 13px;
@@ -365,6 +379,10 @@ hr.divider {
     }
 
     .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .render-summary-grid {
         grid-template-columns: 1fr;
     }
 }
