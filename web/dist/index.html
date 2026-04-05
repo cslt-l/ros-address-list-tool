@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROS Address List Tool</title>
+    <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+<!--
+  整个页面采用“左侧导航 + 右侧内容”的简单结构。
+  这样设计的原因：
+  1. 不依赖任何前端框架
+  2. 后续功能扩展时，页面结构不需要推倒重来
+  3. 对当前项目来说，管理台型布局最合适
+-->
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <h1>ROS Address List</h1>
+            <p>纯静态管理端骨架</p>
+        </div>
+
+        <!--
+          左侧导航使用 button，而不是 a 标签跳转。
+          这样做的目的是：
+          1. 当前阶段不引入前端路由系统
+          2. 直接用原生 JS 切换 section 显示状态
+          3. 后续如果要改成多页面或更复杂路由，也容易调整
+        -->
+        <nav class="nav">
+            <button class="nav-item active" data-section="dashboard-section">总览</button>
+            <button class="nav-item" data-section="lists-section">Address Lists</button>
+            <button class="nav-item" data-section="rules-section">Manual Rules</button>
+            <button class="nav-item" data-section="render-section">Render</button>
+            <button class="nav-item" data-section="config-section">原始配置</button>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <!--
+          顶部状态栏：
+          1. 展示当前 API 基础状态
+          2. 提供快速动作按钮
+          3. 后续可以继续加“刷新全部”“查看日志”等按钮
+        -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <h2>基础管理台</h2>
+                <p>当前阶段：纯静态页面骨架 + API 基础联通准备</p>
+            </div>
+
+            <div class="topbar-actions">
+                <button id="btn-check-health" class="btn btn-primary">检查服务状态</button>
+                <button id="btn-load-config" class="btn">加载当前配置</button>
+            </div>
+        </header>
+
+        <!--
+          全局消息区域：
+          用于展示成功、失败、提示信息。
+          当前阶段先做最简单的一行消息提示。
+        -->
+        <section id="message-box" class="message-box hidden"></section>
+
+        <!-- ===================== 总览区 ===================== -->
+        <section id="dashboard-section" class="page-section active">
+            <div class="section-header">
+                <h3>总览</h3>
+                <p>这里用于展示系统当前摘要信息。</p>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-title">服务状态</div>
+                    <div id="dashboard-health-status" class="card-value">未检查</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Address List 数量</div>
+                    <div id="dashboard-list-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Manual Rule 数量</div>
+                    <div id="dashboard-rule-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">默认渲染模式</div>
+                    <div id="dashboard-render-mode" class="card-value">-</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h4>当前配置摘要</h4>
+                <ul id="dashboard-summary-list" class="summary-list">
+                    <li>尚未加载配置</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- ===================== Address Lists 区 ===================== -->
+        <section id="lists-section" class="page-section">
+            <div class="section-header">
+                <h3>Address Lists</h3>
+                <p>下一步会在这里接入 list 查询、新增、修改、删除与 description 管理。</p>
+            </div>
+
+            <div class="panel">
+                <h4>当前阶段说明</h4>
+                <p>
+                    这一块当前先保留页面骨架。后续会接入：
+                    <code>GET /api/v1/lists</code>、
+                    <code>POST /api/v1/lists</code>、
+                    <code>PUT /api/v1/lists/{name}</code>、
+                    <code>DELETE /api/v1/lists/{name}</code>。
+                </p>
+            </div>
+        </section>
+
+        <!-- ===================== Manual Rules 区 ===================== -->
+        <section id="rules-section" class="page-section">
+            <div class="section-header">
+                <h3>Manual Rules</h3>
+                <p>下一步会在这里接入 rule 查询、新增、修改、删除。</p>
+            </div>
+
+            <div class="panel">
+                <h4>当前阶段说明</h4>
+                <p>
+                    这一块当前先保留页面骨架。后续会接入：
+                    <code>GET /api/v1/manual-rules</code>、
+                    <code>POST /api/v1/manual-rules</code>、
+                    <code>PUT /api/v1/manual-rules/{id}</code>、
+                    <code>DELETE /api/v1/manual-rules/{id}</code>。
+                </p>
+            </div>
+        </section>
+
+        <!-- ===================== Render 区 ===================== -->
+        <section id="render-section" class="page-section">
+            <div class="section-header">
+                <h3>Render</h3>
+                <p>下一步会在这里接入模式选择、渲染执行和脚本预览。</p>
+            </div>
+
+            <div class="panel">
+                <h4>当前阶段说明</h4>
+                <p>
+                    这一块当前先保留页面骨架。后续会接入：
+                    <code>POST /api/v1/render</code>，
+                    并支持选择 <code>replace_all</code> / <code>diff</code>。
+                </p>
+            </div>
+        </section>
+
+        <!-- ===================== 原始配置区 ===================== -->
+        <section id="config-section" class="page-section">
+            <div class="section-header">
+                <h3>原始配置查看</h3>
+                <p>这里直接显示后端当前返回的完整配置 JSON。</p>
+            </div>
+
+            <div class="panel">
+                <div class="panel-actions">
+                    <button id="btn-load-config-inline" class="btn btn-primary">重新加载配置</button>
+                </div>
+
+                <pre id="config-json-viewer" class="json-viewer">尚未加载配置</pre>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+/*
+  第一版样式设计目标：
+  1. 轻量
+  2. 清晰
+  3. 不依赖任何第三方样式框架
+  4. 给后续继续扩展页面留出空间
+*/
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: #f5f7fb;
+    color: #1f2937;
+}
+
+code {
+    background: #eef2ff;
+    color: #3730a3;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.app-shell {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+}
+
+.sidebar {
+    background: #111827;
+    color: #ffffff;
+    padding: 20px 16px;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand h1 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.brand p {
+    margin: 8px 0 0 0;
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 28px;
+}
+
+.nav-item {
+    border: 0;
+    cursor: pointer;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: transparent;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-item.active {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.main-content {
+    padding: 24px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.topbar-left h2 {
+    margin: 0;
+    font-size: 26px;
+}
+
+.topbar-left p {
+    margin: 8px 0 0 0;
+    color: #6b7280;
+}
+
+.topbar-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: #f3f4f6;
+}
+
+.btn.btn-primary {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.btn.btn-primary:hover {
+    background: #1d4ed8;
+}
+
+.message-box {
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 18px;
+    background: #e0f2fe;
+    color: #0c4a6e;
+    border: 1px solid #bae6fd;
+}
+
+.message-box.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.message-box.hidden {
+    display: none;
+}
+
+.page-section {
+    display: none;
+}
+
+.page-section.active {
+    display: block;
+}
+
+.section-header {
+    margin-bottom: 16px;
+}
+
+.section-header h3 {
+    margin: 0;
+    font-size: 22px;
+}
+
+.section-header p {
+    margin: 8px 0 0 0;
+    color: #6b7280;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+.card-title {
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+
+.card-value {
+    font-size: 26px;
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.panel {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+.panel h4 {
+    margin-top: 0;
+}
+
+.panel-actions {
+    margin-bottom: 12px;
+}
+
+.summary-list {
+    padding-left: 20px;
+    line-height: 1.8;
+}
+
+.json-viewer {
+    background: #111827;
+    color: #e5e7eb;
+    padding: 16px;
+    border-radius: 12px;
+    overflow: auto;
+    min-height: 240px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* 响应式处理：屏幕窄时改成上下布局 */
+@media (max-width: 960px) {
+    .app-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .topbar {
+        flex-direction: column;
+    }
+}
