@@ -10,24 +10,6 @@ import (
 )
 
 // NewHTTPHandler 创建整个 HTTP API 与静态页面的根处理器。
-// 当前阶段它负责两类内容：
-//
-// 1. API 接口：
-//   - /healthz
-//   - /api/v1/config
-//   - /api/v1/render
-//   - /api/v1/lists...
-//   - /api/v1/manual-rules...
-//
-// 2. 静态页面：
-//   - /                -> index.html
-//   - /app.css         -> web/dist/app.css
-//   - /app.js          -> web/dist/app.js
-//
-// 这样做的好处是：
-// - 页面和 API 同源
-// - 不需要额外处理 CORS
-// - 部署时只需要启动一个 Go 服务
 func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 	s := &apiServer{
 		store:  store,
@@ -48,22 +30,18 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 	mux.HandleFunc("/api/v1/manual-rules", s.handleManualRules)
 	mux.HandleFunc("/api/v1/manual-rules/", s.handleManualRuleByID)
 
+	// 新增：sources 管理接口
+	mux.HandleFunc("/api/v1/sources/desired", s.handleDesiredSources)
+	mux.HandleFunc("/api/v1/sources/desired/", s.handleDesiredSourceByName)
+	mux.HandleFunc("/api/v1/sources/current", s.handleCurrentSources)
+	mux.HandleFunc("/api/v1/sources/current/", s.handleCurrentSourceByName)
+
 	// ===================== 静态文件托管 =====================
 
 	cfg := store.GetConfig()
 
-	// 当前阶段的静态托管策略：
-	// 1. 如果 enable_web=true 且 web_dir 存在，则托管静态页面
-	// 2. 如果未启用或目录不存在，则根路径返回一个简单 JSON 提示
-	//
-	// 这里之所以把静态托管也放在 NewHTTPHandler 中统一管理，
-	// 是因为“HTTP API”和“前端页面”本质上都属于同一个 Web 服务。
 	if cfg.Server.EnableWeb && dirExists(cfg.Server.WebDir) {
 		fileServer := http.FileServer(http.Dir(cfg.Server.WebDir))
-
-		// 根路径和其它非 API 路径都交给静态文件服务处理。
-		// 由于 ServeMux 会优先匹配更长、更具体的路径，
-		// 所以前面定义的 /api/v1/... 和 /healthz 不会被这里覆盖。
 		mux.Handle("/", fileServer)
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +53,7 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 					"GET  /healthz",
 					"GET  /api/v1/config",
 					"POST /api/v1/render",
+
 					"GET  /api/v1/lists",
 					"POST /api/v1/lists",
 					"GET  /api/v1/lists/{name}",
@@ -82,10 +61,21 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 					"DELETE /api/v1/lists/{name}",
 					"GET  /api/v1/lists/{name}/description",
 					"PUT  /api/v1/lists/{name}/description",
+
 					"GET  /api/v1/manual-rules",
 					"POST /api/v1/manual-rules",
 					"PUT  /api/v1/manual-rules/{id}",
 					"DELETE /api/v1/manual-rules/{id}",
+
+					"GET  /api/v1/sources/desired",
+					"POST /api/v1/sources/desired",
+					"PUT  /api/v1/sources/desired/{name}",
+					"DELETE /api/v1/sources/desired/{name}",
+
+					"GET  /api/v1/sources/current",
+					"POST /api/v1/sources/current",
+					"PUT  /api/v1/sources/current/{name}",
+					"DELETE /api/v1/sources/current/{name}",
 				},
 			})
 		})
@@ -431,6 +421,192 @@ func (s *apiServer) handleManualRuleByID(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// ===================== Sources 管理接口 =====================
+
+func (s *apiServer) handleDesiredSources(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.store.GetConfig()
+		writeJSON(w, http.StatusOK, cfg.DesiredSources)
+
+	case http.MethodPost:
+		var src SourceConfig
+		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid request body: " + err.Error(),
+			})
+			return
+		}
+
+		if err := s.store.UpsertDesiredSource(src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "desired source upserted",
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+	}
+}
+
+func (s *apiServer) handleDesiredSourceByName(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/api/v1/sources/desired/")
+	if name == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": "not found",
+		})
+		return
+	}
+
+	name, err := url.PathUnescape(name)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "bad source name",
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var src SourceConfig
+		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid request body: " + err.Error(),
+			})
+			return
+		}
+
+		src.Name = name
+
+		if err := s.store.UpsertDesiredSource(src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "desired source updated",
+		})
+
+	case http.MethodDelete:
+		if err := s.store.DeleteDesiredSource(name); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "desired source deleted",
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+	}
+}
+
+func (s *apiServer) handleCurrentSources(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.store.GetConfig()
+		writeJSON(w, http.StatusOK, cfg.CurrentStateSources)
+
+	case http.MethodPost:
+		var src SourceConfig
+		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid request body: " + err.Error(),
+			})
+			return
+		}
+
+		if err := s.store.UpsertCurrentSource(src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "current source upserted",
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+	}
+}
+
+func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/api/v1/sources/current/")
+	if name == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": "not found",
+		})
+		return
+	}
+
+	name, err := url.PathUnescape(name)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "bad source name",
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var src SourceConfig
+		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid request body: " + err.Error(),
+			})
+			return
+		}
+
+		src.Name = name
+
+		if err := s.store.UpsertCurrentSource(src); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "current source updated",
+		})
+
+	case http.MethodDelete:
+		if err := s.store.DeleteCurrentSource(name); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "current source deleted",
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+	}
+}
+
 func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("HTTP %s %s", r.Method, r.URL.Path)
@@ -447,8 +623,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
-// dirExists 用于判断静态目录是否存在。
-// 只有目录真实存在时，我们才把根路径交给文件服务处理。
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
