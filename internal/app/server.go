@@ -5,31 +5,29 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
-// NewHTTPHandler 创建整个 HTTP API 的根处理器。
-// 当前阶段接口分为四组：
+// NewHTTPHandler 创建整个 HTTP API 与静态页面的根处理器。
+// 当前阶段它负责两类内容：
 //
-// 第一组：基础服务接口
-// - GET  /healthz
-// - GET  /api/v1/config
-// - POST /api/v1/render
+// 1. API 接口：
+//   - /healthz
+//   - /api/v1/config
+//   - /api/v1/render
+//   - /api/v1/lists...
+//   - /api/v1/manual-rules...
 //
-// 第二组：address-list 管理接口
-// - GET    /api/v1/lists
-// - POST   /api/v1/lists
-// - GET    /api/v1/lists/{name}
-// - PUT    /api/v1/lists/{name}
-// - DELETE /api/v1/lists/{name}
-// - GET    /api/v1/lists/{name}/description
-// - PUT    /api/v1/lists/{name}/description
+// 2. 静态页面：
+//   - /                -> index.html
+//   - /app.css         -> web/dist/app.css
+//   - /app.js          -> web/dist/app.js
 //
-// 第三组：manual rule 管理接口
-// - GET    /api/v1/manual-rules
-// - POST   /api/v1/manual-rules
-// - PUT    /api/v1/manual-rules/{id}
-// - DELETE /api/v1/manual-rules/{id}
+// 这样做的好处是：
+// - 页面和 API 同源
+// - 不需要额外处理 CORS
+// - 部署时只需要启动一个 Go 服务
 func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 	s := &apiServer{
 		store:  store,
@@ -38,41 +36,60 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// 基础接口
+	// ===================== API 接口 =====================
+
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/v1/config", s.handleConfig)
 	mux.HandleFunc("/api/v1/render", s.handleRender)
 
-	// address-list 接口
 	mux.HandleFunc("/api/v1/lists", s.handleLists)
 	mux.HandleFunc("/api/v1/lists/", s.handleListByName)
 
-	// manual rule 接口
 	mux.HandleFunc("/api/v1/manual-rules", s.handleManualRules)
 	mux.HandleFunc("/api/v1/manual-rules/", s.handleManualRuleByID)
 
-	// 根路径说明
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"message": "RouterOS address-list HTTP API is running",
-			"routes": []string{
-				"GET  /healthz",
-				"GET  /api/v1/config",
-				"POST /api/v1/render",
-				"GET  /api/v1/lists",
-				"POST /api/v1/lists",
-				"GET  /api/v1/lists/{name}",
-				"PUT  /api/v1/lists/{name}",
-				"DELETE /api/v1/lists/{name}",
-				"GET  /api/v1/lists/{name}/description",
-				"PUT  /api/v1/lists/{name}/description",
-				"GET  /api/v1/manual-rules",
-				"POST /api/v1/manual-rules",
-				"PUT  /api/v1/manual-rules/{id}",
-				"DELETE /api/v1/manual-rules/{id}",
-			},
+	// ===================== 静态文件托管 =====================
+
+	cfg := store.GetConfig()
+
+	// 当前阶段的静态托管策略：
+	// 1. 如果 enable_web=true 且 web_dir 存在，则托管静态页面
+	// 2. 如果未启用或目录不存在，则根路径返回一个简单 JSON 提示
+	//
+	// 这里之所以把静态托管也放在 NewHTTPHandler 中统一管理，
+	// 是因为“HTTP API”和“前端页面”本质上都属于同一个 Web 服务。
+	if cfg.Server.EnableWeb && dirExists(cfg.Server.WebDir) {
+		fileServer := http.FileServer(http.Dir(cfg.Server.WebDir))
+
+		// 根路径和其它非 API 路径都交给静态文件服务处理。
+		// 由于 ServeMux 会优先匹配更长、更具体的路径，
+		// 所以前面定义的 /api/v1/... 和 /healthz 不会被这里覆盖。
+		mux.Handle("/", fileServer)
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"message":     "RouterOS address-list HTTP API is running",
+				"web_enabled": cfg.Server.EnableWeb,
+				"web_dir":     cfg.Server.WebDir,
+				"routes": []string{
+					"GET  /healthz",
+					"GET  /api/v1/config",
+					"POST /api/v1/render",
+					"GET  /api/v1/lists",
+					"POST /api/v1/lists",
+					"GET  /api/v1/lists/{name}",
+					"PUT  /api/v1/lists/{name}",
+					"DELETE /api/v1/lists/{name}",
+					"GET  /api/v1/lists/{name}/description",
+					"PUT  /api/v1/lists/{name}/description",
+					"GET  /api/v1/manual-rules",
+					"POST /api/v1/manual-rules",
+					"PUT  /api/v1/manual-rules/{id}",
+					"DELETE /api/v1/manual-rules/{id}",
+				},
+			})
 		})
-	})
+	}
 
 	return loggingMiddleware(logger, mux)
 }
@@ -322,9 +339,6 @@ func (s *apiServer) handleListDescription(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// handleManualRules 处理：
-// - GET  /api/v1/manual-rules
-// - POST /api/v1/manual-rules
 func (s *apiServer) handleManualRules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -358,9 +372,6 @@ func (s *apiServer) handleManualRules(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleManualRuleByID 处理：
-// - PUT    /api/v1/manual-rules/{id}
-// - DELETE /api/v1/manual-rules/{id}
 func (s *apiServer) handleManualRuleByID(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/manual-rules/")
 	if id == "" {
@@ -388,7 +399,6 @@ func (s *apiServer) handleManualRuleByID(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		// 路径参数优先
 		rule.ID = id
 
 		if err := s.store.UpsertManualRule(rule); err != nil {
@@ -435,4 +445,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
+}
+
+// dirExists 用于判断静态目录是否存在。
+// 只有目录真实存在时，我们才把根路径交给文件服务处理。
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
