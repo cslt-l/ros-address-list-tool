@@ -27,7 +27,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：Address List 页面已接入真实 CRUD</p>
+                <p>当前阶段：Address Lists 与 Manual Rules 页面已接入真实 CRUD</p>
             </div>
 
             <div class="topbar-actions">
@@ -191,18 +191,114 @@
         <section id="rules-section" class="page-section">
             <div class="section-header">
                 <h3>Manual Rules</h3>
-                <p>下一步会在这里接入 rule 查询、新增、修改、删除。</p>
+                <p>支持查询、新增、修改、删除规则。</p>
             </div>
 
-            <div class="panel">
-                <h4>当前阶段说明</h4>
-                <p>
-                    下一步会接入：
-                    <code>GET /api/v1/manual-rules</code>、
-                    <code>POST /api/v1/manual-rules</code>、
-                    <code>PUT /api/v1/manual-rules/{id}</code>、
-                    <code>DELETE /api/v1/manual-rules/{id}</code>。
-                </p>
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>当前 Rules</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-rules" class="btn btn-primary">刷新规则</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>List Name</th>
+                                <th>Action</th>
+                                <th>Priority</th>
+                                <th>Enabled</th>
+                                <th>Description</th>
+                                <th>Entries</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="rules-table-body">
+                            <tr>
+                                <td colspan="8">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Rule</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-rule-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="rule-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="rule-id">ID</label>
+                            <input id="rule-id" name="id" type="text" placeholder="新增时可留空或自定义" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-list-name">List Name</label>
+                            <input
+                                    id="rule-list-name"
+                                    name="list_name"
+                                    type="text"
+                                    placeholder="例如 toPccBalance"
+                            />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-action">Action</label>
+                            <select id="rule-action" name="action">
+                                <option value="add">add</option>
+                                <option value="remove">remove</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-priority">Priority</label>
+                            <input
+                                    id="rule-priority"
+                                    name="priority"
+                                    type="number"
+                                    value="1000"
+                                    placeholder="例如 1000"
+                            />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="rule-enabled">Enabled</label>
+                            <input id="rule-enabled" name="enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="rule-description">Description</label>
+                            <textarea
+                                    id="rule-description"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入规则说明"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="rule-entries">Entries（每行一个）</label>
+                            <textarea
+                                    id="rule-entries"
+                                    name="entries"
+                                    rows="6"
+                                    placeholder="例如&#10;10.10.10.10&#10;10.10.10.11"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-rule" type="submit" class="btn btn-primary">保存 Rule</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </section>
 

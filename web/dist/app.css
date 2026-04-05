@@ -270,6 +270,7 @@ hr.divider {
 .data-table th {
     background: #f9fafb;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .inline-actions {
@@ -317,6 +318,7 @@ hr.divider {
 }
 
 .form-row input[type="text"],
+.form-row input[type="number"],
 .form-row select,
 .form-row textarea {
     width: 100%;
@@ -335,6 +337,11 @@ hr.divider {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.muted {
+    color: #6b7280;
+    font-size: 13px;
 }
 
 @media (max-width: 1100px) {

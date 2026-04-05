@@ -10,6 +10,9 @@ const btnLoadConfigInline = document.getElementById("btn-load-config-inline");
 const btnRefreshLists = document.getElementById("btn-refresh-lists");
 const btnResetListForm = document.getElementById("btn-reset-list-form");
 
+const btnRefreshRules = document.getElementById("btn-refresh-rules");
+const btnResetRuleForm = document.getElementById("btn-reset-rule-form");
+
 const healthStatusEl = document.getElementById("dashboard-health-status");
 const listCountEl = document.getElementById("dashboard-list-count");
 const ruleCountEl = document.getElementById("dashboard-rule-count");
@@ -18,6 +21,7 @@ const summaryListEl = document.getElementById("dashboard-summary-list");
 const configViewerEl = document.getElementById("config-json-viewer");
 
 const listsTableBody = document.getElementById("lists-table-body");
+const rulesTableBody = document.getElementById("rules-table-body");
 
 const listForm = document.getElementById("list-form");
 const listNameInput = document.getElementById("list-name");
@@ -29,9 +33,20 @@ const descriptionForm = document.getElementById("description-form");
 const descTargetNameInput = document.getElementById("desc-target-name");
 const descTextInput = document.getElementById("desc-text");
 
+const ruleForm = document.getElementById("rule-form");
+const ruleIdInput = document.getElementById("rule-id");
+const ruleListNameInput = document.getElementById("rule-list-name");
+const ruleActionSelect = document.getElementById("rule-action");
+const rulePriorityInput = document.getElementById("rule-priority");
+const ruleEnabledInput = document.getElementById("rule-enabled");
+const ruleDescriptionInput = document.getElementById("rule-description");
+const ruleEntriesInput = document.getElementById("rule-entries");
+
 let currentConfig = null;
 let currentLists = [];
+let currentRules = [];
 let editingListName = "";
+let editingRuleId = "";
 
 // ===================== 页面导航 =====================
 
@@ -163,21 +178,16 @@ function renderConfigToViewer(config) {
 // ===================== Address Lists 页面 =====================
 
 async function loadLists() {
-    clearMessage();
-
     try {
         const lists = await apiFetch("/api/v1/lists");
         currentLists = Array.isArray(lists) ? lists : [];
         renderListsTable(currentLists);
 
-        // 如果配置也已经有了，顺手同步总览统计。
         if (currentConfig) {
             currentConfig.lists = currentLists;
             renderConfigToDashboard(currentConfig);
             renderConfigToViewer(currentConfig);
         }
-
-        showMessage("Address Lists 已刷新。");
     } catch (error) {
         showMessage(`加载 Address Lists 失败：${error.message}`, true);
     }
@@ -195,7 +205,6 @@ function renderListsTable(lists) {
 
     lists.forEach((item) => {
         const tr = document.createElement("tr");
-
         const enabledText = item.enabled ? "true" : "false";
         const descriptionText = item.description || "";
 
@@ -206,9 +215,9 @@ function renderListsTable(lists) {
       <td>${escapeHTML(descriptionText)}</td>
       <td>
         <div class="inline-actions">
-          <button class="inline-link-btn" data-action="edit" data-name="${encodeURIComponent(item.name)}">编辑</button>
-          <button class="inline-link-btn" data-action="desc" data-name="${encodeURIComponent(item.name)}">改说明</button>
-          <button class="inline-link-btn danger" data-action="delete" data-name="${encodeURIComponent(item.name)}">删除</button>
+          <button class="inline-link-btn" data-action="edit-list" data-name="${encodeURIComponent(item.name)}">编辑</button>
+          <button class="inline-link-btn" data-action="desc-list" data-name="${encodeURIComponent(item.name)}">改说明</button>
+          <button class="inline-link-btn danger" data-action="delete-list" data-name="${encodeURIComponent(item.name)}">删除</button>
         </div>
       </td>
     `;
@@ -237,7 +246,7 @@ async function editList(name) {
         descTextInput.value = item.description || "";
 
         setActiveSection("lists-section");
-        showMessage(`已加载 ${name} 到编辑表单。`);
+        showMessage(`已加载 ${name} 到 list 编辑表单。`);
     } catch (error) {
         showMessage(`加载 list 详情失败：${error.message}`, true);
     }
@@ -288,7 +297,7 @@ async function submitListForm(event) {
     const description = listDescriptionInput.value;
 
     if (!name) {
-        showMessage("Name 不能为空。", true);
+        showMessage("List Name 不能为空。", true);
         return;
     }
 
@@ -307,8 +316,6 @@ async function submitListForm(event) {
             });
             showMessage(`已更新 list：${name}`);
         } else if (editingListName && editingListName !== name) {
-            // 当前后端 PUT 的路径名优先，所以如果你改了 name，
-            // 最简单稳妥的做法就是当作新增一个新 list。
             await apiFetch("/api/v1/lists", {
                 method: "POST",
                 body: JSON.stringify(payload)
@@ -358,6 +365,181 @@ async function submitDescriptionForm(event) {
     }
 }
 
+// ===================== Manual Rules 页面 =====================
+
+async function loadRules() {
+    try {
+        const rules = await apiFetch("/api/v1/manual-rules");
+        currentRules = Array.isArray(rules) ? rules : [];
+        renderRulesTable(currentRules);
+
+        if (currentConfig) {
+            currentConfig.manual_rules = currentRules;
+            renderConfigToDashboard(currentConfig);
+            renderConfigToViewer(currentConfig);
+        }
+    } catch (error) {
+        showMessage(`加载 Manual Rules 失败：${error.message}`, true);
+    }
+}
+
+function renderRulesTable(rules) {
+    rulesTableBody.innerHTML = "";
+
+    if (!rules.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="8">当前没有任何 rule</td>`;
+        rulesTableBody.appendChild(tr);
+        return;
+    }
+
+    rules.forEach((item) => {
+        const tr = document.createElement("tr");
+        const enabledText = item.enabled ? "true" : "false";
+        const entriesText = Array.isArray(item.entries) ? item.entries.join(", ") : "";
+
+        tr.innerHTML = `
+      <td>${escapeHTML(item.id)}</td>
+      <td>${escapeHTML(item.list_name)}</td>
+      <td>${escapeHTML(item.action)}</td>
+      <td>${escapeHTML(String(item.priority))}</td>
+      <td>${enabledText}</td>
+      <td>${escapeHTML(item.description || "")}</td>
+      <td>${escapeHTML(entriesText)}</td>
+      <td>
+        <div class="inline-actions">
+          <button class="inline-link-btn" data-action="edit-rule" data-id="${encodeURIComponent(item.id)}">编辑</button>
+          <button class="inline-link-btn danger" data-action="delete-rule" data-id="${encodeURIComponent(item.id)}">删除</button>
+        </div>
+      </td>
+    `;
+
+        rulesTableBody.appendChild(tr);
+    });
+}
+
+function resetRuleForm() {
+    editingRuleId = "";
+    ruleForm.reset();
+    ruleActionSelect.value = "add";
+    rulePriorityInput.value = "1000";
+    ruleEnabledInput.checked = true;
+}
+
+function fillRuleForm(rule) {
+    editingRuleId = rule.id || "";
+    ruleIdInput.value = rule.id || "";
+    ruleListNameInput.value = rule.list_name || "";
+    ruleActionSelect.value = rule.action || "add";
+    rulePriorityInput.value = String(rule.priority ?? 1000);
+    ruleEnabledInput.checked = Boolean(rule.enabled);
+    ruleDescriptionInput.value = rule.description || "";
+    ruleEntriesInput.value = Array.isArray(rule.entries) ? rule.entries.join("\n") : "";
+}
+
+function findRuleById(id) {
+    return currentRules.find((item) => item.id === id) || null;
+}
+
+async function editRule(id) {
+    const rule = findRuleById(id);
+    if (!rule) {
+        showMessage(`未找到 rule：${id}`, true);
+        return;
+    }
+
+    fillRuleForm(rule);
+    setActiveSection("rules-section");
+    showMessage(`已加载 ${id} 到 rule 编辑表单。`);
+}
+
+async function deleteRule(id) {
+    const ok = window.confirm(`确定删除 rule "${id}" 吗？`);
+    if (!ok) return;
+
+    clearMessage();
+
+    try {
+        await apiFetch(`/api/v1/manual-rules/${encodeURIComponent(id)}`, {
+            method: "DELETE"
+        });
+
+        if (editingRuleId === id) {
+            resetRuleForm();
+        }
+
+        await loadRules();
+        await loadConfig();
+
+        showMessage(`已删除 rule：${id}`);
+    } catch (error) {
+        showMessage(`删除 rule 失败：${error.message}`, true);
+    }
+}
+
+async function submitRuleForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const id = ruleIdInput.value.trim();
+    const listName = ruleListNameInput.value.trim();
+    const action = ruleActionSelect.value;
+    const priority = Number(rulePriorityInput.value || 0);
+    const enabled = ruleEnabledInput.checked;
+    const description = ruleDescriptionInput.value;
+    const entries = ruleEntriesInput.value
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    if (!listName) {
+        showMessage("Rule 的 List Name 不能为空。", true);
+        return;
+    }
+
+    if (!Number.isFinite(priority)) {
+        showMessage("Priority 必须是数字。", true);
+        return;
+    }
+
+    const payload = {
+        id,
+        list_name: listName,
+        action,
+        priority,
+        enabled,
+        description,
+        entries
+    };
+
+    try {
+        if (editingRuleId) {
+            await apiFetch(`/api/v1/manual-rules/${encodeURIComponent(editingRuleId)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已更新 rule：${editingRuleId}`);
+        } else {
+            await apiFetch("/api/v1/manual-rules", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 rule：${id || "（由后端生成 ID）"}`);
+        }
+
+        await loadRules();
+        await loadConfig();
+
+        if (!editingRuleId && id) {
+            editingRuleId = id;
+        }
+    } catch (error) {
+        showMessage(`保存 rule 失败：${error.message}`, true);
+    }
+}
+
+// ===================== 表格事件代理 =====================
+
 function bindListTableActions() {
     listsTableBody.addEventListener("click", async (event) => {
         const target = event.target;
@@ -369,20 +551,42 @@ function bindListTableActions() {
 
         const name = decodeURIComponent(encodedName);
 
-        if (action === "edit") {
+        if (action === "edit-list") {
             await editList(name);
             return;
         }
 
-        if (action === "desc") {
+        if (action === "desc-list") {
             await editList(name);
             descTargetNameInput.value = name;
             setActiveSection("lists-section");
             return;
         }
 
-        if (action === "delete") {
+        if (action === "delete-list") {
             await deleteList(name);
+        }
+    });
+}
+
+function bindRuleTableActions() {
+    rulesTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const encodedId = target.dataset.id;
+        if (!action || !encodedId) return;
+
+        const id = decodeURIComponent(encodedId);
+
+        if (action === "edit-rule") {
+            await editRule(id);
+            return;
+        }
+
+        if (action === "delete-rule") {
+            await deleteRule(id);
         }
     });
 }
@@ -414,12 +618,23 @@ btnLoadConfigInline.addEventListener("click", () => {
 });
 
 btnRefreshLists.addEventListener("click", () => {
-    void loadLists();
+    clearMessage();
+    void loadLists().then(() => showMessage("Address Lists 已刷新。"));
 });
 
 btnResetListForm.addEventListener("click", () => {
     resetListForm();
     showMessage("List 表单已重置。");
+});
+
+btnRefreshRules.addEventListener("click", () => {
+    clearMessage();
+    void loadRules().then(() => showMessage("Manual Rules 已刷新。"));
+});
+
+btnResetRuleForm.addEventListener("click", () => {
+    resetRuleForm();
+    showMessage("Rule 表单已重置。");
 });
 
 listForm.addEventListener("submit", (event) => {
@@ -430,14 +645,22 @@ descriptionForm.addEventListener("submit", (event) => {
     void submitDescriptionForm(event);
 });
 
+ruleForm.addEventListener("submit", (event) => {
+    void submitRuleForm(event);
+});
+
 bindListTableActions();
+bindRuleTableActions();
 
 // ===================== 页面初始化 =====================
 
 window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");
+    resetListForm();
+    resetRuleForm();
 
     await checkHealth();
     await loadConfig();
     await loadLists();
+    await loadRules();
 });
