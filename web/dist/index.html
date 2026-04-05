@@ -7,27 +7,13 @@
     <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
-<!--
-  整个页面采用“左侧导航 + 右侧内容”的简单结构。
-  这样设计的原因：
-  1. 不依赖任何前端框架
-  2. 后续功能扩展时，页面结构不需要推倒重来
-  3. 对当前项目来说，管理台型布局最合适
--->
 <div class="app-shell">
     <aside class="sidebar">
         <div class="brand">
             <h1>ROS Address List</h1>
-            <p>纯静态管理端骨架</p>
+            <p>纯静态管理端</p>
         </div>
 
-        <!--
-          左侧导航使用 button，而不是 a 标签跳转。
-          这样做的目的是：
-          1. 当前阶段不引入前端路由系统
-          2. 直接用原生 JS 切换 section 显示状态
-          3. 后续如果要改成多页面或更复杂路由，也容易调整
-        -->
         <nav class="nav">
             <button class="nav-item active" data-section="dashboard-section">总览</button>
             <button class="nav-item" data-section="lists-section">Address Lists</button>
@@ -38,16 +24,10 @@
     </aside>
 
     <main class="main-content">
-        <!--
-          顶部状态栏：
-          1. 展示当前 API 基础状态
-          2. 提供快速动作按钮
-          3. 后续可以继续加“刷新全部”“查看日志”等按钮
-        -->
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：纯静态页面骨架 + API 基础联通准备</p>
+                <p>当前阶段：Address List 页面已接入真实 CRUD</p>
             </div>
 
             <div class="topbar-actions">
@@ -56,18 +36,13 @@
             </div>
         </header>
 
-        <!--
-          全局消息区域：
-          用于展示成功、失败、提示信息。
-          当前阶段先做最简单的一行消息提示。
-        -->
         <section id="message-box" class="message-box hidden"></section>
 
         <!-- ===================== 总览区 ===================== -->
         <section id="dashboard-section" class="page-section active">
             <div class="section-header">
                 <h3>总览</h3>
-                <p>这里用于展示系统当前摘要信息。</p>
+                <p>展示系统当前摘要信息。</p>
             </div>
 
             <div class="card-grid">
@@ -104,18 +79,111 @@
         <section id="lists-section" class="page-section">
             <div class="section-header">
                 <h3>Address Lists</h3>
-                <p>下一步会在这里接入 list 查询、新增、修改、删除与 description 管理。</p>
+                <p>支持查询、新增、修改、删除与 description 管理。</p>
             </div>
 
-            <div class="panel">
-                <h4>当前阶段说明</h4>
-                <p>
-                    这一块当前先保留页面骨架。后续会接入：
-                    <code>GET /api/v1/lists</code>、
-                    <code>POST /api/v1/lists</code>、
-                    <code>PUT /api/v1/lists/{name}</code>、
-                    <code>DELETE /api/v1/lists/{name}</code>。
-                </p>
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>当前 Lists</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-lists" class="btn btn-primary">刷新列表</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Family</th>
+                                <th>Enabled</th>
+                                <th>Description</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="lists-table-body">
+                            <tr>
+                                <td colspan="5">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 List</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-list-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="list-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="list-name">Name</label>
+                            <input id="list-name" name="name" type="text" placeholder="例如 toWanIpv4" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="list-family">Family</label>
+                            <select id="list-family" name="family">
+                                <option value="ipv4">ipv4</option>
+                                <option value="ipv6">ipv6</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="list-enabled">Enabled</label>
+                            <input id="list-enabled" name="enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="list-description">Description</label>
+                            <textarea
+                                    id="list-description"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入列表说明"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-list" type="submit" class="btn btn-primary">保存 List</button>
+                        </div>
+                    </form>
+
+                    <hr class="divider" />
+
+                    <h4>单独修改 Description</h4>
+                    <form id="description-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="desc-target-name">目标 Name</label>
+                            <input
+                                    id="desc-target-name"
+                                    name="descTargetName"
+                                    type="text"
+                                    placeholder="例如 toWanTelecom"
+                            />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desc-text">Description</label>
+                            <textarea
+                                    id="desc-text"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入新的说明文字"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-description" type="submit" class="btn btn-primary">
+                                更新 Description
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </section>
 
@@ -129,7 +197,7 @@
             <div class="panel">
                 <h4>当前阶段说明</h4>
                 <p>
-                    这一块当前先保留页面骨架。后续会接入：
+                    下一步会接入：
                     <code>GET /api/v1/manual-rules</code>、
                     <code>POST /api/v1/manual-rules</code>、
                     <code>PUT /api/v1/manual-rules/{id}</code>、
@@ -148,7 +216,7 @@
             <div class="panel">
                 <h4>当前阶段说明</h4>
                 <p>
-                    这一块当前先保留页面骨架。后续会接入：
+                    下一步会接入：
                     <code>POST /api/v1/render</code>，
                     并支持选择 <code>replace_all</code> / <code>diff</code>。
                 </p>

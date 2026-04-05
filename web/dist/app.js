@@ -1,18 +1,3 @@
-/*
-  第一版原生 JS 页面脚本设计目标：
-
-  1. 不依赖任何前端框架
-  2. 代码尽量直白易懂
-  3. 先完成基础导航切换
-  4. 先接通两个基础接口：
-     - /healthz
-     - /api/v1/config
-
-  当前阶段暂不接 lists / rules / render 的完整交互，
-  但页面结构已经预留。
-*/
-
-// ===================== 基础元素获取 =====================
 const navButtons = Array.from(document.querySelectorAll(".nav-item"));
 const sections = Array.from(document.querySelectorAll(".page-section"));
 
@@ -22,6 +7,9 @@ const btnCheckHealth = document.getElementById("btn-check-health");
 const btnLoadConfig = document.getElementById("btn-load-config");
 const btnLoadConfigInline = document.getElementById("btn-load-config-inline");
 
+const btnRefreshLists = document.getElementById("btn-refresh-lists");
+const btnResetListForm = document.getElementById("btn-reset-list-form");
+
 const healthStatusEl = document.getElementById("dashboard-health-status");
 const listCountEl = document.getElementById("dashboard-list-count");
 const ruleCountEl = document.getElementById("dashboard-rule-count");
@@ -29,21 +17,24 @@ const renderModeEl = document.getElementById("dashboard-render-mode");
 const summaryListEl = document.getElementById("dashboard-summary-list");
 const configViewerEl = document.getElementById("config-json-viewer");
 
-// 当前页面缓存的配置对象。
-// 后续 lists / rules / render 接上后，也可以继续复用。
+const listsTableBody = document.getElementById("lists-table-body");
+
+const listForm = document.getElementById("list-form");
+const listNameInput = document.getElementById("list-name");
+const listFamilySelect = document.getElementById("list-family");
+const listEnabledInput = document.getElementById("list-enabled");
+const listDescriptionInput = document.getElementById("list-description");
+
+const descriptionForm = document.getElementById("description-form");
+const descTargetNameInput = document.getElementById("desc-target-name");
+const descTextInput = document.getElementById("desc-text");
+
 let currentConfig = null;
+let currentLists = [];
+let editingListName = "";
 
 // ===================== 页面导航 =====================
 
-/*
-  setActiveSection 用于切换当前显示的 section。
-
-  为什么不用多页跳转？
-  因为当前阶段我们要尽量轻量：
-  - 不引入前端路由
-  - 不引入构建工具
-  - 直接用原生 JS 完成单页区块切换
-*/
 function setActiveSection(sectionId) {
     navButtons.forEach((button) => {
         const active = button.dataset.section === sectionId;
@@ -81,17 +72,6 @@ function clearMessage() {
 
 // ===================== API 请求层 =====================
 
-/*
-  apiFetch 是当前页面统一的请求函数。
-
-  这里故意使用“同源相对路径”：
-  - /healthz
-  - /api/v1/config
-
-  原因是：
-  下一步我们会让 Go 后端直接托管 web/dist，
-  那时页面和 API 天然同源，不需要前端硬编码 127.0.0.1:9000。
-*/
 async function apiFetch(path, options = {}) {
     const response = await fetch(path, {
         headers: {
@@ -121,7 +101,7 @@ async function apiFetch(path, options = {}) {
     return data;
 }
 
-// ===================== 基础功能：健康检查 =====================
+// ===================== 基础功能 =====================
 
 async function checkHealth() {
     clearMessage();
@@ -129,7 +109,6 @@ async function checkHealth() {
     try {
         healthStatusEl.textContent = "检查中...";
         const data = await apiFetch("/healthz");
-
         healthStatusEl.textContent = data.status || "unknown";
         showMessage("服务状态检查成功。");
     } catch (error) {
@@ -137,8 +116,6 @@ async function checkHealth() {
         showMessage(`服务状态检查失败：${error.message}`, true);
     }
 }
-
-// ===================== 基础功能：加载完整配置 =====================
 
 async function loadConfig() {
     clearMessage();
@@ -156,9 +133,6 @@ async function loadConfig() {
     }
 }
 
-/*
-  renderConfigToDashboard 用于把完整配置对象的关键摘要渲染到总览区。
-*/
 function renderConfigToDashboard(config) {
     listCountEl.textContent = String(config.lists?.length ?? 0);
     ruleCountEl.textContent = String(config.manual_rules?.length ?? 0);
@@ -182,11 +156,246 @@ function renderConfigToDashboard(config) {
     });
 }
 
-/*
-  renderConfigToViewer 用于把完整配置对象以 JSON 字符串形式展示到配置查看区。
-*/
 function renderConfigToViewer(config) {
     configViewerEl.textContent = JSON.stringify(config, null, 2);
+}
+
+// ===================== Address Lists 页面 =====================
+
+async function loadLists() {
+    clearMessage();
+
+    try {
+        const lists = await apiFetch("/api/v1/lists");
+        currentLists = Array.isArray(lists) ? lists : [];
+        renderListsTable(currentLists);
+
+        // 如果配置也已经有了，顺手同步总览统计。
+        if (currentConfig) {
+            currentConfig.lists = currentLists;
+            renderConfigToDashboard(currentConfig);
+            renderConfigToViewer(currentConfig);
+        }
+
+        showMessage("Address Lists 已刷新。");
+    } catch (error) {
+        showMessage(`加载 Address Lists 失败：${error.message}`, true);
+    }
+}
+
+function renderListsTable(lists) {
+    listsTableBody.innerHTML = "";
+
+    if (!lists.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="5">当前没有任何 list</td>`;
+        listsTableBody.appendChild(tr);
+        return;
+    }
+
+    lists.forEach((item) => {
+        const tr = document.createElement("tr");
+
+        const enabledText = item.enabled ? "true" : "false";
+        const descriptionText = item.description || "";
+
+        tr.innerHTML = `
+      <td>${escapeHTML(item.name)}</td>
+      <td>${escapeHTML(item.family)}</td>
+      <td>${enabledText}</td>
+      <td>${escapeHTML(descriptionText)}</td>
+      <td>
+        <div class="inline-actions">
+          <button class="inline-link-btn" data-action="edit" data-name="${encodeURIComponent(item.name)}">编辑</button>
+          <button class="inline-link-btn" data-action="desc" data-name="${encodeURIComponent(item.name)}">改说明</button>
+          <button class="inline-link-btn danger" data-action="delete" data-name="${encodeURIComponent(item.name)}">删除</button>
+        </div>
+      </td>
+    `;
+
+        listsTableBody.appendChild(tr);
+    });
+}
+
+async function getListByName(name) {
+    return apiFetch(`/api/v1/lists/${encodeURIComponent(name)}`);
+}
+
+async function editList(name) {
+    clearMessage();
+
+    try {
+        const item = await getListByName(name);
+
+        editingListName = item.name;
+        listNameInput.value = item.name || "";
+        listFamilySelect.value = item.family || "ipv4";
+        listEnabledInput.checked = Boolean(item.enabled);
+        listDescriptionInput.value = item.description || "";
+
+        descTargetNameInput.value = item.name || "";
+        descTextInput.value = item.description || "";
+
+        setActiveSection("lists-section");
+        showMessage(`已加载 ${name} 到编辑表单。`);
+    } catch (error) {
+        showMessage(`加载 list 详情失败：${error.message}`, true);
+    }
+}
+
+async function deleteList(name) {
+    const ok = window.confirm(`确定删除 list "${name}" 吗？`);
+    if (!ok) return;
+
+    clearMessage();
+
+    try {
+        await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}`, {
+            method: "DELETE"
+        });
+
+        if (editingListName === name) {
+            resetListForm();
+        }
+        if (descTargetNameInput.value === name) {
+            descTargetNameInput.value = "";
+            descTextInput.value = "";
+        }
+
+        await loadLists();
+        await loadConfig();
+
+        showMessage(`已删除 list：${name}`);
+    } catch (error) {
+        showMessage(`删除 list 失败：${error.message}`, true);
+    }
+}
+
+function resetListForm() {
+    editingListName = "";
+    listForm.reset();
+    listFamilySelect.value = "ipv4";
+    listEnabledInput.checked = true;
+}
+
+async function submitListForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const name = listNameInput.value.trim();
+    const family = listFamilySelect.value;
+    const enabled = listEnabledInput.checked;
+    const description = listDescriptionInput.value;
+
+    if (!name) {
+        showMessage("Name 不能为空。", true);
+        return;
+    }
+
+    const payload = {
+        name,
+        family,
+        enabled,
+        description
+    };
+
+    try {
+        if (editingListName && editingListName === name) {
+            await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已更新 list：${name}`);
+        } else if (editingListName && editingListName !== name) {
+            // 当前后端 PUT 的路径名优先，所以如果你改了 name，
+            // 最简单稳妥的做法就是当作新增一个新 list。
+            await apiFetch("/api/v1/lists", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 list：${name}`);
+        } else {
+            await apiFetch("/api/v1/lists", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            showMessage(`已新增 list：${name}`);
+        }
+
+        await loadLists();
+        await loadConfig();
+
+        editingListName = name;
+    } catch (error) {
+        showMessage(`保存 list 失败：${error.message}`, true);
+    }
+}
+
+async function submitDescriptionForm(event) {
+    event.preventDefault();
+    clearMessage();
+
+    const name = descTargetNameInput.value.trim();
+    const description = descTextInput.value;
+
+    if (!name) {
+        showMessage("目标 Name 不能为空。", true);
+        return;
+    }
+
+    try {
+        await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}/description`, {
+            method: "PUT",
+            body: JSON.stringify({ description })
+        });
+
+        await loadLists();
+        await loadConfig();
+
+        showMessage(`已更新 ${name} 的 description。`);
+    } catch (error) {
+        showMessage(`更新 description 失败：${error.message}`, true);
+    }
+}
+
+function bindListTableActions() {
+    listsTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const encodedName = target.dataset.name;
+        if (!action || !encodedName) return;
+
+        const name = decodeURIComponent(encodedName);
+
+        if (action === "edit") {
+            await editList(name);
+            return;
+        }
+
+        if (action === "desc") {
+            await editList(name);
+            descTargetNameInput.value = name;
+            setActiveSection("lists-section");
+            return;
+        }
+
+        if (action === "delete") {
+            await deleteList(name);
+        }
+    });
+}
+
+// ===================== 工具函数 =====================
+
+function escapeHTML(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
 }
 
 // ===================== 事件绑定 =====================
@@ -204,17 +413,31 @@ btnLoadConfigInline.addEventListener("click", () => {
     setActiveSection("config-section");
 });
 
+btnRefreshLists.addEventListener("click", () => {
+    void loadLists();
+});
+
+btnResetListForm.addEventListener("click", () => {
+    resetListForm();
+    showMessage("List 表单已重置。");
+});
+
+listForm.addEventListener("submit", (event) => {
+    void submitListForm(event);
+});
+
+descriptionForm.addEventListener("submit", (event) => {
+    void submitDescriptionForm(event);
+});
+
+bindListTableActions();
+
 // ===================== 页面初始化 =====================
 
-/*
-  页面启动时，先自动检查一次服务状态，再自动尝试加载配置。
-  这样打开页面后，用户能第一时间看到：
-  - 服务通不通
-  - 配置能不能拿到
-*/
 window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");
 
     await checkHealth();
     await loadConfig();
+    await loadLists();
 });
