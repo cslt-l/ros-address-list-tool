@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ROS Address List Tool</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
@@ -27,7 +28,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：Address Lists、Manual Rules、Render 页面已接入真实后端</p>
+                <p>当前阶段：页面收尾优化与可用性整理</p>
             </div>
 
             <div class="topbar-actions">
@@ -38,7 +39,6 @@
 
         <section id="message-box" class="message-box hidden"></section>
 
-        <!-- ===================== 总览区 ===================== -->
         <section id="dashboard-section" class="page-section active">
             <div class="section-header">
                 <h3>总览</h3>
@@ -75,7 +75,6 @@
             </div>
         </section>
 
-        <!-- ===================== Address Lists 区 ===================== -->
         <section id="lists-section" class="page-section">
             <div class="section-header">
                 <h3>Address Lists</h3>
@@ -104,7 +103,7 @@
                             </thead>
                             <tbody id="lists-table-body">
                             <tr>
-                                <td colspan="5">尚未加载</td>
+                                <td colspan="5" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -187,7 +186,6 @@
             </div>
         </section>
 
-        <!-- ===================== Manual Rules 区 ===================== -->
         <section id="rules-section" class="page-section">
             <div class="section-header">
                 <h3>Manual Rules</h3>
@@ -219,7 +217,7 @@
                             </thead>
                             <tbody id="rules-table-body">
                             <tr>
-                                <td colspan="8">尚未加载</td>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -302,7 +300,6 @@
             </div>
         </section>
 
-        <!-- ===================== Render 区 ===================== -->
         <section id="render-section" class="page-section">
             <div class="section-header">
                 <h3>Render</h3>
@@ -334,7 +331,7 @@
                                     id="render-output-path"
                                     name="output_path"
                                     type="text"
-                                    placeholder="例如 ./output/http-diff.rsc"
+                                    placeholder="例如 ./output/http-render-test.rsc"
                             />
                         </div>
 
@@ -377,12 +374,11 @@
                         </div>
                     </div>
 
-                    <pre id="render-script-viewer" class="json-viewer">尚未执行渲染</pre>
+                    <pre id="render-script-viewer" class="json-viewer empty-viewer">尚未执行渲染</pre>
                 </div>
             </div>
         </section>
 
-        <!-- ===================== 原始配置区 ===================== -->
         <section id="config-section" class="page-section">
             <div class="section-header">
                 <h3>原始配置查看</h3>

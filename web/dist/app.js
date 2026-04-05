@@ -62,9 +62,9 @@ let editingListName = "";
 let editingRuleId = "";
 let currentRenderResult = null;
 
-// ===================== 页面导航 =====================
-
 function setActiveSection(sectionId) {
+    clearMessage();
+
     navButtons.forEach((button) => {
         const active = button.dataset.section === sectionId;
         button.classList.toggle("active", active);
@@ -85,8 +85,6 @@ navButtons.forEach((button) => {
     });
 });
 
-// ===================== 消息提示 =====================
-
 function showMessage(message, isError = false) {
     messageBox.textContent = message;
     messageBox.classList.remove("hidden");
@@ -98,8 +96,6 @@ function clearMessage() {
     messageBox.classList.add("hidden");
     messageBox.classList.remove("error");
 }
-
-// ===================== API 请求层 =====================
 
 async function apiFetch(path, options = {}) {
     const response = await fetch(path, {
@@ -130,8 +126,6 @@ async function apiFetch(path, options = {}) {
     return data;
 }
 
-// ===================== 基础功能 =====================
-
 async function checkHealth() {
     clearMessage();
 
@@ -147,16 +141,11 @@ async function checkHealth() {
 }
 
 async function loadConfig() {
-    clearMessage();
-
     try {
         const data = await apiFetch("/api/v1/config");
         currentConfig = data;
-
         renderConfigToDashboard(data);
         renderConfigToViewer(data);
-
-        showMessage("配置加载成功。");
     } catch (error) {
         showMessage(`配置加载失败：${error.message}`, true);
     }
@@ -189,8 +178,6 @@ function renderConfigToViewer(config) {
     configViewerEl.textContent = JSON.stringify(config, null, 2);
 }
 
-// ===================== Address Lists 页面 =====================
-
 async function loadLists() {
     try {
         const lists = await apiFetch("/api/v1/lists");
@@ -212,7 +199,7 @@ function renderListsTable(lists) {
 
     if (!lists.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="5">当前没有任何 list</td>`;
+        tr.innerHTML = `<td colspan="5" class="empty-cell">当前没有任何 list</td>`;
         listsTableBody.appendChild(tr);
         return;
     }
@@ -220,13 +207,12 @@ function renderListsTable(lists) {
     lists.forEach((item) => {
         const tr = document.createElement("tr");
         const enabledText = item.enabled ? "true" : "false";
-        const descriptionText = item.description || "";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
       <td>${escapeHTML(item.family)}</td>
       <td>${enabledText}</td>
-      <td>${escapeHTML(descriptionText)}</td>
+      <td>${escapeHTML(item.description || "")}</td>
       <td>
         <div class="inline-actions">
           <button class="inline-link-btn" data-action="edit-list" data-name="${encodeURIComponent(item.name)}">编辑</button>
@@ -379,8 +365,6 @@ async function submitDescriptionForm(event) {
     }
 }
 
-// ===================== Manual Rules 页面 =====================
-
 async function loadRules() {
     try {
         const rules = await apiFetch("/api/v1/manual-rules");
@@ -402,7 +386,7 @@ function renderRulesTable(rules) {
 
     if (!rules.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="8">当前没有任何 rule</td>`;
+        tr.innerHTML = `<td colspan="8" class="empty-cell">当前没有任何 rule</td>`;
         rulesTableBody.appendChild(tr);
         return;
     }
@@ -552,8 +536,6 @@ async function submitRuleForm(event) {
     }
 }
 
-// ===================== Render 页面 =====================
-
 function resetRenderForm() {
     renderForm.reset();
     renderModeSelect.value = "";
@@ -567,6 +549,7 @@ function clearRenderResult() {
     renderResultEntryCountEl.textContent = "-";
     renderResultOutputPathEl.textContent = "-";
     renderScriptViewerEl.textContent = "尚未执行渲染";
+    renderScriptViewerEl.classList.add("empty-viewer");
 }
 
 function renderRenderResult(result) {
@@ -576,6 +559,7 @@ function renderRenderResult(result) {
     renderResultEntryCountEl.textContent = String(result.entry_count ?? "-");
     renderResultOutputPathEl.textContent = String(result.output_path ?? "-");
     renderScriptViewerEl.textContent = result.script || "";
+    renderScriptViewerEl.classList.remove("empty-viewer");
 }
 
 async function submitRenderForm(event) {
@@ -620,8 +604,6 @@ async function copyRenderScript() {
         showMessage("复制失败，请手动复制。", true);
     }
 }
-
-// ===================== 表格事件代理 =====================
 
 function bindListTableActions() {
     listsTableBody.addEventListener("click", async (event) => {
@@ -674,8 +656,6 @@ function bindRuleTableActions() {
     });
 }
 
-// ===================== 工具函数 =====================
-
 function escapeHTML(value) {
     return String(value)
         .replaceAll("&", "&amp;")
@@ -685,19 +665,19 @@ function escapeHTML(value) {
         .replaceAll("'", "&#39;");
 }
 
-// ===================== 事件绑定 =====================
-
 btnCheckHealth.addEventListener("click", () => {
     void checkHealth();
 });
 
 btnLoadConfig.addEventListener("click", () => {
-    void loadConfig();
+    void loadConfig().then(() => showMessage("配置加载成功。"));
 });
 
 btnLoadConfigInline.addEventListener("click", () => {
-    void loadConfig();
-    setActiveSection("config-section");
+    void loadConfig().then(() => {
+        setActiveSection("config-section");
+        showMessage("配置加载成功。");
+    });
 });
 
 btnRefreshLists.addEventListener("click", () => {
@@ -752,8 +732,6 @@ renderForm.addEventListener("submit", (event) => {
 
 bindListTableActions();
 bindRuleTableActions();
-
-// ===================== 页面初始化 =====================
 
 window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");

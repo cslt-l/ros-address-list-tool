@@ -136,6 +136,7 @@ hr.divider {
     background: #e0f2fe;
     color: #0c4a6e;
     border: 1px solid #bae6fd;
+    transition: opacity 0.2s ease;
 }
 
 .message-box.error {
@@ -251,6 +252,11 @@ hr.divider {
     word-break: break-word;
 }
 
+.empty-viewer {
+    color: #9ca3af;
+    font-style: italic;
+}
+
 .split-layout {
     display: grid;
     grid-template-columns: 1.2fr 1fr;
@@ -279,6 +285,12 @@ hr.divider {
     background: #f9fafb;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.empty-cell {
+    text-align: center !important;
+    color: #6b7280;
+    padding: 18px 12px !important;
 }
 
 .inline-actions {
@@ -351,11 +363,6 @@ hr.divider {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-}
-
-.muted {
-    color: #6b7280;
-    font-size: 13px;
 }
 
 @media (max-width: 1100px) {
