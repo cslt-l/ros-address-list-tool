@@ -84,37 +84,51 @@ func loadSourceData(src SourceConfig) ([]byte, error) {
 			Timeout: timeout,
 		}
 
-		req, err := http.NewRequest(http.MethodGet, src.URL, nil)
+		req, err := buildHTTPRequestForSource(src)
 		if err != nil {
-			return nil, fmt.Errorf("创建 HTTP 请求失败: %w", err)
-		}
-
-		// 将配置中的自定义请求头写入请求。
-		for k, v := range src.Headers {
-			req.Header.Set(k, v)
+			return nil, fmt.Errorf("构造 URL 请求失败，source=%s: %w", src.Name, err)
 		}
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("请求 URL 失败: %w", err)
+			return nil, fmt.Errorf("请求 URL 来源失败，source=%s: %w", src.Name, err)
 		}
 		defer resp.Body.Close()
 
-		// 只接受 2xx。
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("HTTP 状态码异常: %d", resp.StatusCode)
+			return nil, fmt.Errorf("URL 来源返回非 2xx，source=%s status=%s", src.Name, resp.Status)
 		}
 
-		data, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("读取 HTTP 响应体失败: %w", err)
+			return nil, fmt.Errorf("读取 URL 来源响应失败，source=%s: %w", src.Name, err)
 		}
 
-		return data, nil
+		return body, nil
 
 	default:
 		return nil, fmt.Errorf("不支持的 source.type: %s", src.Type)
 	}
+}
+
+func buildHTTPRequestForSource(src SourceConfig) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodGet, src.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// 把 source 配置里的 headers 写入请求头。
+	// 这里会自动忽略空 key。
+	for k, v := range src.Headers {
+		key := strings.TrimSpace(k)
+		value := strings.TrimSpace(v)
+		if key == "" {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
+
+	return req, nil
 }
 
 // ParseSourcePayload 将原始 JSON 数据解析为统一的 []SourceList。

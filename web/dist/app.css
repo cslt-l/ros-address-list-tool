@@ -216,6 +216,16 @@ hr.divider {
     margin-top: 0;
 }
 
+.panel-inner {
+    box-shadow: none;
+    border: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.panel-gap-top {
+    margin-top: 18px;
+}
+
 .panel-actions {
     margin-bottom: 12px;
 }
@@ -364,6 +374,7 @@ hr.divider {
 
 .form-row textarea {
     resize: vertical;
+    min-height: 96px;
 }
 
 .form-actions {
@@ -401,6 +412,24 @@ hr.divider {
 .source-type-badge.url {
     background: #dcfce7;
     color: #15803d;
+}
+
+.header-count-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f3e8ff;
+    color: #7c3aed;
+}
+
+.status-ok {
+    color: #15803d;
+}
+
+.status-fail {
+    color: #dc2626;
 }
 
 @media (max-width: 1300px) {

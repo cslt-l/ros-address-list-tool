@@ -36,6 +36,8 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 	mux.HandleFunc("/api/v1/sources/current", s.handleCurrentSources)
 	mux.HandleFunc("/api/v1/sources/current/", s.handleCurrentSourceByName)
 
+	mux.HandleFunc("/api/v1/sources/test", s.handleSourceTest)
+
 	// ===================== 静态文件托管 =====================
 
 	cfg := store.GetConfig()
@@ -76,6 +78,7 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 					"POST /api/v1/sources/current",
 					"PUT  /api/v1/sources/current/{name}",
 					"DELETE /api/v1/sources/current/{name}",
+					"POST /api/v1/sources/test",
 				},
 			})
 		})
@@ -605,6 +608,27 @@ func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Req
 			"error": "method not allowed",
 		})
 	}
+}
+
+func (s *apiServer) handleSourceTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+		return
+	}
+
+	var src SourceConfig
+	if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	// 这里不落盘，只做即时测试。
+	result := ProbeSource(src)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {

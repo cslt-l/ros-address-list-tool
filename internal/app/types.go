@@ -122,52 +122,36 @@ type ListDefinition struct {
 // 你要求支持“多个 URL、多个 JSON”，
 // 所以未来配置中会有多个 SourceConfig 组成的数组。
 type SourceConfig struct {
-	// Name 是该 source 的逻辑名称。
-	//
-	// 这个字段主要用于：
-	// - 日志输出
-	// - 错误定位
-	// - 后续 Web 管理端显示
+	// Name 是来源名称，要求在同一类来源中唯一。
 	Name string `json:"name"`
 
-	// Type 表示来源类型。
-	//
-	// 目前计划支持：
-	// - file：从本地 JSON 文件读取
-	// - url：从远程 HTTP 地址读取
+	// Type 表示来源类型，当前支持：
+	// - file
+	// - url
 	Type string `json:"type"`
 
-	// Path 是本地文件路径。
-	// 当 Type=file 时使用。
+	// Path 用于 file 类型来源。
 	Path string `json:"path,omitempty"`
 
-	// URL 是远程地址。
-	// 当 Type=url 时使用。
+	// URL 用于 url 类型来源。
 	URL string `json:"url,omitempty"`
 
-	// Headers 用于保存访问 URL 时需要带上的请求头。
-	// 例如未来如果某些接口需要 Authorization，
-	// 或者需要自定义 User-Agent，就可以放在这里。
+	// Headers 用于 url 类型来源的附加请求头。
+	// 例如：
+	// {
+	//   "Authorization": "Bearer xxxxx",
+	//   "User-Agent": "ros-address-list-tool/1.0"
+	// }
 	Headers map[string]string `json:"headers,omitempty"`
 
-	// TimeoutSeconds 表示访问 URL 时的超时时间，单位为秒。
-	//
-	// 这个字段只对 url 类型有意义。
-	// 之所以现在就设计进去，是为了避免未来远程源阻塞整个程序。
-	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
-
-	// Enabled 表示该 source 是否启用。
-	//
-	// 关闭某个 source 后：
-	// - 程序不再读取它
-	// - 但该 source 的配置仍然保留，便于以后恢复
+	// Enabled 表示是否启用该来源。
 	Enabled bool `json:"enabled"`
 
-	// Priority 表示该 source 的优先级。
-	//
-	// 数值越大，优先级越高。
-	// 后续在合并多个来源时，会用这个值决定冲突时谁覆盖谁。
+	// Priority 表示来源合并优先级。
 	Priority int `json:"priority"`
+
+	// TimeoutSeconds 表示请求超时时间（秒）。
+	TimeoutSeconds int `json:"timeout_seconds"`
 }
 
 // ManualRule 表示手工维护规则。

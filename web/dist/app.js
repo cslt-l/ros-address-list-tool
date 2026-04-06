@@ -17,6 +17,10 @@ const btnRefreshDesiredSources = document.getElementById("btn-refresh-desired-so
 const btnResetDesiredSourceForm = document.getElementById("btn-reset-desired-source-form");
 const btnRefreshCurrentSources = document.getElementById("btn-refresh-current-sources");
 const btnResetCurrentSourceForm = document.getElementById("btn-reset-current-source-form");
+const btnTestDesiredSource = document.getElementById("btn-test-desired-source");
+const btnTestCurrentSource = document.getElementById("btn-test-current-source");
+const btnSaveProbedSource = document.getElementById("btn-save-probed-source");
+const btnClearSourceProbeResult = document.getElementById("btn-clear-source-probe-result");
 
 const btnResetRenderForm = document.getElementById("btn-reset-render-form");
 const btnClearRenderResult = document.getElementById("btn-clear-render-result");
@@ -60,6 +64,7 @@ const desiredSourceNameInput = document.getElementById("desired-source-name");
 const desiredSourceTypeSelect = document.getElementById("desired-source-type");
 const desiredSourcePathInput = document.getElementById("desired-source-path");
 const desiredSourceURLInput = document.getElementById("desired-source-url");
+const desiredSourceHeadersInput = document.getElementById("desired-source-headers");
 const desiredSourcePriorityInput = document.getElementById("desired-source-priority");
 const desiredSourceTimeoutInput = document.getElementById("desired-source-timeout");
 const desiredSourceEnabledInput = document.getElementById("desired-source-enabled");
@@ -71,11 +76,29 @@ const currentSourceNameInput = document.getElementById("current-source-name");
 const currentSourceTypeSelect = document.getElementById("current-source-type");
 const currentSourcePathInput = document.getElementById("current-source-path");
 const currentSourceURLInput = document.getElementById("current-source-url");
+const currentSourceHeadersInput = document.getElementById("current-source-headers");
 const currentSourcePriorityInput = document.getElementById("current-source-priority");
 const currentSourceTimeoutInput = document.getElementById("current-source-timeout");
 const currentSourceEnabledInput = document.getElementById("current-source-enabled");
 const currentSourcePathHelp = document.getElementById("current-source-path-help");
 const currentSourceURLHelp = document.getElementById("current-source-url-help");
+
+const sourceProbeStatusEl = document.getElementById("source-probe-status");
+const sourceProbeNameEl = document.getElementById("source-probe-name");
+const sourceProbeLocationEl = document.getElementById("source-probe-location");
+const sourceProbeHTTPStatusEl = document.getElementById("source-probe-http-status");
+const sourceProbeContentTypeEl = document.getElementById("source-probe-content-type");
+const sourceProbeBodyBytesEl = document.getElementById("source-probe-body-bytes");
+const sourceProbeJSONValidEl = document.getElementById("source-probe-json-valid");
+const sourceProbeJSONTypeEl = document.getElementById("source-probe-json-type");
+const sourceProbeListCountEl = document.getElementById("source-probe-list-count");
+const sourceProbeEntryCountEl = document.getElementById("source-probe-entry-count");
+const sourceProbeHeadersCountEl = document.getElementById("source-probe-headers-count");
+const sourceProbeDurationEl = document.getElementById("source-probe-duration");
+const sourceProbeErrorEl = document.getElementById("source-probe-error");
+const sourceProbeListNamesEl = document.getElementById("source-probe-list-names");
+const sourceProbeResponseHeadersEl = document.getElementById("source-probe-response-headers");
+const sourceProbeRawPreviewEl = document.getElementById("source-probe-raw-preview");
 
 const renderForm = document.getElementById("render-form");
 const renderModeSelect = document.getElementById("render-mode");
@@ -98,6 +121,9 @@ let editingDesiredSourceName = "";
 let editingCurrentSourceName = "";
 
 let currentRenderResult = null;
+let lastProbeKind = "";
+let lastProbePayload = null;
+let lastProbeSourceName = "";
 
 function setActiveSection(sectionId) {
     clearMessage();
@@ -354,12 +380,6 @@ async function submitListForm(event) {
                 body: JSON.stringify(payload)
             });
             showMessage(`已更新 list：${name}`);
-        } else if (editingListName && editingListName !== name) {
-            await apiFetch("/api/v1/lists", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已新增 list：${name}`);
         } else {
             await apiFetch("/api/v1/lists", {
                 method: "POST",
@@ -575,9 +595,47 @@ async function submitRuleForm(event) {
     }
 }
 
+function parseHeadersText(text) {
+    const lines = String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    const headers = {};
+
+    for (const line of lines) {
+        const index = line.indexOf(":");
+        if (index <= 0) {
+            throw new Error(`Headers 格式错误：${line}`);
+        }
+
+        const key = line.slice(0, index).trim();
+        const value = line.slice(index + 1).trim();
+
+        if (!key) {
+            throw new Error(`Headers key 不能为空：${line}`);
+        }
+
+        headers[key] = value;
+    }
+
+    return headers;
+}
+
+function stringifyHeadersMap(headers) {
+    if (!headers || typeof headers !== "object") {
+        return "";
+    }
+
+    return Object.entries(headers)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\n");
+}
+
 function resetDesiredSourceForm() {
     editingDesiredSourceName = "";
     desiredSourceForm.reset();
+    desiredSourceHeadersInput.value = "";
     desiredSourceTypeSelect.value = "file";
     desiredSourcePriorityInput.value = "100";
     desiredSourceTimeoutInput.value = "15";
@@ -588,6 +646,7 @@ function resetDesiredSourceForm() {
 function resetCurrentSourceForm() {
     editingCurrentSourceName = "";
     currentSourceForm.reset();
+    currentSourceHeadersInput.value = "";
     currentSourceTypeSelect.value = "file";
     currentSourcePriorityInput.value = "100";
     currentSourceTimeoutInput.value = "15";
@@ -632,7 +691,7 @@ function renderSourceTable(targetBody, items, kind) {
 
     if (!items.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="7" class="empty-cell">当前没有任何 source</td>`;
+        tr.innerHTML = `<td colspan="8" class="empty-cell">当前没有任何 source</td>`;
         targetBody.appendChild(tr);
         return;
     }
@@ -641,17 +700,25 @@ function renderSourceTable(targetBody, items, kind) {
         const tr = document.createElement("tr");
         const location = item.type === "url" ? item.url || "" : item.path || "";
         const typeClass = item.type === "url" ? "source-type-badge url" : "source-type-badge";
+        const headerCount = item.headers ? Object.keys(item.headers).length : 0;
+        const headerText =
+            headerCount > 0
+                ? `<span class="header-count-badge">${headerCount} 个</span>`
+                : "-";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
       <td><span class="${typeClass}">${escapeHTML(item.type)}</span></td>
       <td>${escapeHTML(location)}</td>
+      <td>${headerText}</td>
       <td>${item.enabled ? "true" : "false"}</td>
       <td>${escapeHTML(String(item.priority ?? ""))}</td>
       <td>${escapeHTML(String(item.timeout_seconds ?? ""))}</td>
       <td>
         <div class="inline-actions">
           <button class="inline-link-btn" data-action="edit-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">编辑</button>
+          <button class="inline-link-btn" data-action="copy-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">复制</button>
+          <button class="inline-link-btn" data-action="test-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">测试</button>
           <button class="inline-link-btn danger" data-action="delete-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">删除</button>
         </div>
       </td>
@@ -661,6 +728,7 @@ function renderSourceTable(targetBody, items, kind) {
     });
 }
 
+
 function findDesiredSourceByName(name) {
     return currentDesiredSources.find((item) => item.name === name) || null;
 }
@@ -669,12 +737,80 @@ function findCurrentSourceByName(name) {
     return currentCurrentSources.find((item) => item.name === name) || null;
 }
 
+function makeCopiedSourceName(kind, originalName) {
+    const items = kind === "desired" ? currentDesiredSources : currentCurrentSources;
+    const existingNames = new Set(items.map((item) => item.name));
+
+    const baseName = originalName.endsWith("-copy")
+        ? originalName
+        : `${originalName}-copy`;
+
+    if (!existingNames.has(baseName)) {
+        return baseName;
+    }
+
+    let index = 2;
+    while (existingNames.has(`${baseName}-${index}`)) {
+        index += 1;
+    }
+
+    return `${baseName}-${index}`;
+}
+
+function copySavedSourceToForm(kind, name) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到要复制的 source：${name}`, true);
+        return;
+    }
+
+    const copiedName = makeCopiedSourceName(kind, item.name || "source");
+
+    if (kind === "desired") {
+        // 关键点：
+        // 复制为新 source 时，必须清空 editingDesiredSourceName，
+        // 否则点击保存会变成 PUT 覆盖旧 source，而不是 POST 新增。
+        editingDesiredSourceName = "";
+
+        desiredSourceNameInput.value = copiedName;
+        desiredSourceTypeSelect.value = item.type || "file";
+        desiredSourcePathInput.value = item.path || "";
+        desiredSourceURLInput.value = item.url || "";
+        desiredSourceHeadersInput.value = stringifyHeadersMap(item.headers);
+        desiredSourcePriorityInput.value = String(item.priority ?? 100);
+        desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
+        desiredSourceEnabledInput.checked = Boolean(item.enabled);
+
+        syncSourceTypeUI("desired");
+    } else {
+        // 同理，复制 current source 时也必须切回“新增模式”
+        editingCurrentSourceName = "";
+
+        currentSourceNameInput.value = copiedName;
+        currentSourceTypeSelect.value = item.type || "file";
+        currentSourcePathInput.value = item.path || "";
+        currentSourceURLInput.value = item.url || "";
+        currentSourceHeadersInput.value = stringifyHeadersMap(item.headers);
+        currentSourcePriorityInput.value = String(item.priority ?? 100);
+        currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
+        currentSourceEnabledInput.checked = Boolean(item.enabled);
+
+        syncSourceTypeUI("current");
+    }
+
+    setActiveSection("sources-section");
+    showMessage(`已将 ${name} 复制到 ${kind} source 表单，新名称为：${copiedName}`);
+}
+
 function fillDesiredSourceForm(item) {
     editingDesiredSourceName = item.name || "";
     desiredSourceNameInput.value = item.name || "";
     desiredSourceTypeSelect.value = item.type || "file";
     desiredSourcePathInput.value = item.path || "";
     desiredSourceURLInput.value = item.url || "";
+    desiredSourceHeadersInput.value = stringifyHeadersMap(item.headers);
     desiredSourcePriorityInput.value = String(item.priority ?? 100);
     desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
     desiredSourceEnabledInput.checked = Boolean(item.enabled);
@@ -687,6 +823,7 @@ function fillCurrentSourceForm(item) {
     currentSourceTypeSelect.value = item.type || "file";
     currentSourcePathInput.value = item.path || "";
     currentSourceURLInput.value = item.url || "";
+    currentSourceHeadersInput.value = stringifyHeadersMap(item.headers);
     currentSourcePriorityInput.value = String(item.priority ?? 100);
     currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
     currentSourceEnabledInput.checked = Boolean(item.enabled);
@@ -710,6 +847,25 @@ async function editSource(kind, name) {
 
     setActiveSection("sources-section");
     showMessage(`已加载 ${name} 到 ${kind} source 编辑表单。`);
+}
+
+async function testSavedSource(kind, name) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到已保存 source：${name}`, true);
+        return;
+    }
+
+    clearMessage();
+
+    try {
+        await runSourceProbe(item, kind, name);
+        showMessage(`已对已保存 ${kind} source 执行测试：${name}`);
+    } catch (error) {
+        showMessage(`测试已保存 source 失败：${error.message}`, true);
+    }
 }
 
 async function deleteSource(kind, name) {
@@ -764,9 +920,9 @@ function syncSourceTypeUI(kind) {
         pathHelp.textContent = "当前为 file 模式，请填写本地路径。";
         pathHelp.classList.remove("field-help-muted");
 
-        urlHelp.textContent = "当前 file 模式下 URL 输入已禁用。";
+        urlHelp.textContent = "当前 file 模式下 URL 输入已禁用；Headers 通常也不需要。";
         urlHelp.classList.add("field-help-muted");
-        return
+        return;
     }
 
     pathInput.disabled = true;
@@ -778,7 +934,7 @@ function syncSourceTypeUI(kind) {
     pathHelp.textContent = "当前 url 模式下 Path 输入已禁用。";
     pathHelp.classList.add("field-help-muted");
 
-    urlHelp.textContent = "当前为 url 模式，请填写远程地址。";
+    urlHelp.textContent = "当前为 url 模式，请填写远程地址；如需鉴权可额外填写 Headers。";
     urlHelp.classList.remove("field-help-muted");
 }
 
@@ -789,6 +945,10 @@ function buildSourcePayload(kind) {
     const type = isDesired ? desiredSourceTypeSelect.value : currentSourceTypeSelect.value;
     const path = isDesired ? desiredSourcePathInput.value.trim() : currentSourcePathInput.value.trim();
     const url = isDesired ? desiredSourceURLInput.value.trim() : currentSourceURLInput.value.trim();
+    const headersText = isDesired
+        ? desiredSourceHeadersInput.value
+        : currentSourceHeadersInput.value;
+
     const priority = Number(
         isDesired ? desiredSourcePriorityInput.value || 0 : currentSourcePriorityInput.value || 0
     );
@@ -797,11 +957,14 @@ function buildSourcePayload(kind) {
     );
     const enabled = isDesired ? desiredSourceEnabledInput.checked : currentSourceEnabledInput.checked;
 
+    const headers = parseHeadersText(headersText);
+
     return {
         name,
         type,
         path: type === "file" ? path || undefined : undefined,
         url: type === "url" ? url || undefined : undefined,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
         timeout_seconds: timeoutSeconds,
         enabled,
         priority
@@ -813,59 +976,7 @@ async function submitDesiredSourceForm(event) {
     clearMessage();
 
     const payload = buildSourcePayload("desired");
-    if (!payload.name) {
-        showMessage("Desired Source Name 不能为空。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.priority) || payload.priority < 0) {
-        showMessage("Desired Source Priority 必须是大于等于 0 的数字。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
-        showMessage("Desired Source Timeout Seconds 必须大于 0。", true);
-        return;
-    }
-
-    if (payload.type === "file" && !payload.path) {
-        showMessage("file 类型 source 必须填写 path。", true);
-        return;
-    }
-
-    if (payload.type === "url" && !payload.url) {
-        showMessage("url 类型 source 必须填写 url。", true);
-        return;
-    }
-
-    try {
-        if (editingDesiredSourceName && editingDesiredSourceName === payload.name) {
-            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(payload.name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已更新 desired source：${payload.name}`);
-        } else if (editingDesiredSourceName && editingDesiredSourceName !== payload.name) {
-            await apiFetch("/api/v1/sources/desired", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已新增 desired source：${payload.name}`);
-        } else {
-            await apiFetch("/api/v1/sources/desired", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已新增 desired source：${payload.name}`);
-        }
-
-        await loadDesiredSources();
-        await loadConfig();
-
-        editingDesiredSourceName = payload.name;
-    } catch (error) {
-        showMessage(`保存 desired source 失败：${error.message}`, true);
-    }
+    await saveSourcePayload("desired", payload, false);
 }
 
 async function submitCurrentSourceForm(event) {
@@ -873,18 +984,22 @@ async function submitCurrentSourceForm(event) {
     clearMessage();
 
     const payload = buildSourcePayload("current");
+    await saveSourcePayload("current", payload, false);
+}
+
+async function saveSourcePayload(kind, payload, fromProbe) {
     if (!payload.name) {
-        showMessage("Current Source Name 不能为空。", true);
+        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Name 不能为空。`, true);
         return;
     }
 
     if (!Number.isFinite(payload.priority) || payload.priority < 0) {
-        showMessage("Current Source Priority 必须是大于等于 0 的数字。", true);
+        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Priority 必须是大于等于 0 的数字。`, true);
         return;
     }
 
     if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
-        showMessage("Current Source Timeout Seconds 必须大于 0。", true);
+        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Timeout Seconds 必须大于 0。`, true);
         return;
     }
 
@@ -899,34 +1014,259 @@ async function submitCurrentSourceForm(event) {
     }
 
     try {
-        if (editingCurrentSourceName && editingCurrentSourceName === payload.name) {
-            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(payload.name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已更新 current source：${payload.name}`);
-        } else if (editingCurrentSourceName && editingCurrentSourceName !== payload.name) {
-            await apiFetch("/api/v1/sources/current", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已新增 current source：${payload.name}`);
+        if (kind === "desired") {
+            if (editingDesiredSourceName && editingDesiredSourceName === payload.name) {
+                await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(payload.name)}`, {
+                    method: "PUT",
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                await apiFetch("/api/v1/sources/desired", {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            await loadDesiredSources();
+            editingDesiredSourceName = payload.name;
         } else {
-            await apiFetch("/api/v1/sources/current", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            showMessage(`已新增 current source：${payload.name}`);
+            if (editingCurrentSourceName && editingCurrentSourceName === payload.name) {
+                await apiFetch(`/api/v1/sources/current/${encodeURIComponent(payload.name)}`, {
+                    method: "PUT",
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                await apiFetch("/api/v1/sources/current", {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            await loadCurrentSources();
+            editingCurrentSourceName = payload.name;
         }
 
-        await loadCurrentSources();
         await loadConfig();
 
-        editingCurrentSourceName = payload.name;
+        showMessage(
+            fromProbe
+                ? `已一键保存本次测试参数到 ${kind} source：${payload.name}`
+                : `已保存 ${kind} source：${payload.name}`
+        );
     } catch (error) {
-        showMessage(`保存 current source 失败：${error.message}`, true);
+        showMessage(`保存 source 失败：${error.message}`, true);
     }
 }
+
+function clearSourceProbeResult() {
+    lastProbeKind = "";
+    lastProbePayload = null;
+    lastProbeSourceName = "";
+    btnSaveProbedSource.disabled = true;
+
+    sourceProbeStatusEl.textContent = "-";
+    sourceProbeStatusEl.classList.remove("status-ok", "status-fail");
+
+    sourceProbeNameEl.textContent = "-";
+    sourceProbeLocationEl.textContent = "-";
+    sourceProbeHTTPStatusEl.textContent = "-";
+    sourceProbeContentTypeEl.textContent = "-";
+    sourceProbeBodyBytesEl.textContent = "-";
+    sourceProbeJSONValidEl.textContent = "-";
+    sourceProbeJSONTypeEl.textContent = "-";
+    sourceProbeListCountEl.textContent = "-";
+    sourceProbeEntryCountEl.textContent = "-";
+    sourceProbeHeadersCountEl.textContent = "-";
+    sourceProbeDurationEl.textContent = "-";
+
+    sourceProbeErrorEl.textContent = "尚未执行测试";
+    sourceProbeErrorEl.classList.add("empty-viewer");
+
+    sourceProbeListNamesEl.textContent = "尚未执行测试";
+    sourceProbeListNamesEl.classList.add("empty-viewer");
+
+    sourceProbeResponseHeadersEl.textContent = "尚未执行测试";
+    sourceProbeResponseHeadersEl.classList.add("empty-viewer");
+
+    sourceProbeRawPreviewEl.textContent = "尚未执行测试";
+    sourceProbeRawPreviewEl.classList.add("empty-viewer");
+}
+
+function renderSourceProbeResult(result) {
+    sourceProbeStatusEl.textContent = result.ok ? "成功" : "失败";
+    sourceProbeStatusEl.classList.toggle("status-ok", Boolean(result.ok));
+    sourceProbeStatusEl.classList.toggle("status-fail", !result.ok);
+
+    sourceProbeNameEl.textContent = result.name || "-";
+    sourceProbeLocationEl.textContent = result.location || "-";
+    sourceProbeHTTPStatusEl.textContent = result.status_text || "-";
+    sourceProbeContentTypeEl.textContent = result.content_type || "-";
+    sourceProbeBodyBytesEl.textContent = String(result.body_bytes ?? 0);
+    sourceProbeJSONValidEl.textContent = result.json_valid ? "true" : "false";
+    sourceProbeJSONTypeEl.textContent = result.json_type || "-";
+    sourceProbeListCountEl.textContent = String(result.detected_list_count ?? 0);
+    sourceProbeEntryCountEl.textContent = String(result.detected_entry_count ?? 0);
+    sourceProbeHeadersCountEl.textContent = String(result.headers_count ?? 0);
+    sourceProbeDurationEl.textContent = `${result.duration_ms ?? 0} ms`;
+
+    const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    const errorParts = [];
+    if (result.error) {
+        errorParts.push(`错误：${result.error}`);
+    }
+    if (warnings.length > 0) {
+        errorParts.push(`警告：\n- ${warnings.join("\n- ")}`);
+    }
+
+    sourceProbeErrorEl.textContent = errorParts.length > 0 ? errorParts.join("\n\n") : "无";
+    sourceProbeErrorEl.classList.toggle("empty-viewer", errorParts.length === 0);
+
+    const listNames = Array.isArray(result.list_names) ? result.list_names : [];
+    sourceProbeListNamesEl.textContent = listNames.length > 0 ? listNames.join("\n") : "未检测到 list 名称";
+    sourceProbeListNamesEl.classList.toggle("empty-viewer", listNames.length === 0);
+
+    const responseHeaders = result.response_headers
+        ? JSON.stringify(result.response_headers, null, 2)
+        : "无响应头（可能是 file 来源或服务未返回）";
+    sourceProbeResponseHeadersEl.textContent = responseHeaders;
+    sourceProbeResponseHeadersEl.classList.toggle("empty-viewer", !result.response_headers);
+
+    const rawPreview = result.raw_preview || "无可预览内容";
+    sourceProbeRawPreviewEl.textContent = rawPreview;
+    sourceProbeRawPreviewEl.classList.toggle("empty-viewer", !result.raw_preview);
+}
+
+async function runSourceProbe(payload, kind, sourceName = "") {
+    const result = await apiFetch("/api/v1/sources/test", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+
+    renderSourceProbeResult(result);
+    lastProbeKind = kind;
+    lastProbePayload = payload;
+    lastProbeSourceName = sourceName || payload.name || "";
+    btnSaveProbedSource.disabled = false;
+
+    if (result.ok) {
+        showMessage("Source 测试成功。");
+    } else {
+        showMessage(`Source 测试失败：${result.error || "请查看测试结果区域"}`, true);
+    }
+}
+
+async function testDesiredSource() {
+    clearMessage();
+
+    try {
+        const payload = buildSourcePayload("desired");
+        if (!payload.type) {
+            showMessage("Desired Source Type 不能为空。", true);
+            return;
+        }
+
+        if (payload.type === "file" && !payload.path) {
+            showMessage("file 类型 source 必须填写 path。", true);
+            return;
+        }
+
+        if (payload.type === "url" && !payload.url) {
+            showMessage("url 类型 source 必须填写 url。", true);
+            return;
+        }
+
+        await runSourceProbe(payload, "desired", payload.name || "");
+    } catch (error) {
+        showMessage(`测试 Desired Source 失败：${error.message}`, true);
+    }
+}
+
+async function testCurrentSource() {
+    clearMessage();
+
+    try {
+        const payload = buildSourcePayload("current");
+        if (!payload.type) {
+            showMessage("Current Source Type 不能为空。", true);
+            return;
+        }
+
+        if (payload.type === "file" && !payload.path) {
+            showMessage("file 类型 source 必须填写 path。", true);
+            return;
+        }
+
+        if (payload.type === "url" && !payload.url) {
+            showMessage("url 类型 source 必须填写 url。", true);
+            return;
+        }
+
+        await runSourceProbe(payload, "current", payload.name || "");
+    } catch (error) {
+        showMessage(`测试 Current Source 失败：${error.message}`, true);
+    }
+}
+
+async function saveProbedSource() {
+    if (!lastProbeKind || !lastProbePayload) {
+        showMessage("当前没有可保存的测试参数。", true);
+        return;
+    }
+
+    await saveSourcePayload(lastProbeKind, lastProbePayload, true);
+}
+
+function bindListTableActions() {
+    listsTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const encodedName = target.dataset.name;
+        if (!action || !encodedName) return;
+
+        const name = decodeURIComponent(encodedName);
+
+        if (action === "edit-list") {
+            await editList(name);
+            return;
+        }
+
+        if (action === "desc-list") {
+            await editList(name);
+            descTargetNameInput.value = name;
+            setActiveSection("lists-section");
+            return;
+        }
+
+        if (action === "delete-list") {
+            await deleteList(name);
+        }
+    });
+}
+
+function bindRuleTableActions() {
+    rulesTableBody.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const action = target.dataset.action;
+        const encodedId = target.dataset.id;
+        if (!action || !encodedId) return;
+
+        const id = decodeURIComponent(encodedId);
+
+        if (action === "edit-rule") {
+            await editRule(id);
+            return;
+        }
+
+        if (action === "delete-rule") {
+            await deleteRule(id);
+        }
+    });
+}
+
 
 function bindSourceTableActions() {
     desiredSourcesTableBody.addEventListener("click", async (event) => {
@@ -942,6 +1282,16 @@ function bindSourceTableActions() {
 
         if (action === "edit-source") {
             await editSource(kind, name);
+            return;
+        }
+
+        if (action === "copy-source") {
+            copySavedSourceToForm(kind, name);
+            return;
+        }
+
+        if (action === "test-source") {
+            await testSavedSource(kind, name);
             return;
         }
 
@@ -963,6 +1313,16 @@ function bindSourceTableActions() {
 
         if (action === "edit-source") {
             await editSource(kind, name);
+            return;
+        }
+
+        if (action === "copy-source") {
+            copySavedSourceToForm(kind, name);
+            return;
+        }
+
+        if (action === "test-source") {
+            await testSavedSource(kind, name);
             return;
         }
 
@@ -1041,57 +1401,6 @@ async function copyRenderScript() {
     }
 }
 
-function bindListTableActions() {
-    listsTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const action = target.dataset.action;
-        const encodedName = target.dataset.name;
-        if (!action || !encodedName) return;
-
-        const name = decodeURIComponent(encodedName);
-
-        if (action === "edit-list") {
-            await editList(name);
-            return;
-        }
-
-        if (action === "desc-list") {
-            await editList(name);
-            descTargetNameInput.value = name;
-            setActiveSection("lists-section");
-            return;
-        }
-
-        if (action === "delete-list") {
-            await deleteList(name);
-        }
-    });
-}
-
-function bindRuleTableActions() {
-    rulesTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const action = target.dataset.action;
-        const encodedId = target.dataset.id;
-        if (!action || !encodedId) return;
-
-        const id = decodeURIComponent(encodedId);
-
-        if (action === "edit-rule") {
-            await editRule(id);
-            return;
-        }
-
-        if (action === "delete-rule") {
-            await deleteRule(id);
-        }
-    });
-}
-
 function escapeHTML(value) {
     return String(value)
         .replaceAll("&", "&amp;")
@@ -1156,6 +1465,23 @@ btnResetCurrentSourceForm.addEventListener("click", () => {
     showMessage("Current Source 表单已重置。");
 });
 
+btnTestDesiredSource.addEventListener("click", () => {
+    void testDesiredSource();
+});
+
+btnTestCurrentSource.addEventListener("click", () => {
+    void testCurrentSource();
+});
+
+btnSaveProbedSource.addEventListener("click", () => {
+    void saveProbedSource();
+});
+
+btnClearSourceProbeResult.addEventListener("click", () => {
+    clearSourceProbeResult();
+    showMessage("Source 测试结果已清空。");
+});
+
 desiredSourceTypeSelect.addEventListener("change", () => {
     syncSourceTypeUI("desired");
 });
@@ -1214,6 +1540,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     resetCurrentSourceForm();
     resetRenderForm();
     clearRenderResult();
+    clearSourceProbeResult();
 
     await checkHealth();
     await loadConfig();

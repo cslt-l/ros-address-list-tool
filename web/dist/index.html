@@ -29,7 +29,7 @@
         <header class="topbar">
             <div class="topbar-left">
                 <h2>基础管理台</h2>
-                <p>当前阶段：Sources 页面增加 type 联动与可用性优化</p>
+                <p>当前阶段：Source 测试支持 HTTP 状态、响应头预览与一键保存</p>
             </div>
 
             <div class="topbar-actions">
@@ -316,7 +316,7 @@
         <section id="sources-section" class="page-section">
             <div class="section-header">
                 <h3>Sources</h3>
-                <p>支持管理 Desired Sources 与 Current State Sources。</p>
+                <p>支持管理 Desired Sources 与 Current State Sources，并支持连接测试与预检。</p>
             </div>
 
             <div class="sources-grid">
@@ -335,6 +335,7 @@
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Path / URL</th>
+                                <th>Headers</th>
                                 <th>Enabled</th>
                                 <th>Priority</th>
                                 <th>Timeout</th>
@@ -343,7 +344,7 @@
                             </thead>
                             <tbody id="desired-sources-table-body">
                             <tr>
-                                <td colspan="7" class="empty-cell">尚未加载</td>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -388,6 +389,18 @@
                             </div>
                         </div>
 
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-headers">Headers（每行一个，格式 Key: Value）</label>
+                            <textarea
+                                    id="desired-source-headers"
+                                    rows="5"
+                                    placeholder="例如&#10;Authorization: Bearer xxxxx&#10;User-Agent: ros-address-list-tool/1.0"
+                            ></textarea>
+                            <div class="field-help field-help-muted">
+                                URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
                         <div class="form-row">
                             <label for="desired-source-priority">Priority</label>
                             <input id="desired-source-priority" type="number" value="100" />
@@ -405,6 +418,7 @@
 
                         <div class="form-actions form-row-full">
                             <button type="submit" class="btn btn-primary">保存 Desired Source</button>
+                            <button id="btn-test-desired-source" type="button" class="btn">测试 Desired Source</button>
                         </div>
                     </form>
                 </div>
@@ -424,6 +438,7 @@
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Path / URL</th>
+                                <th>Headers</th>
                                 <th>Enabled</th>
                                 <th>Priority</th>
                                 <th>Timeout</th>
@@ -432,7 +447,7 @@
                             </thead>
                             <tbody id="current-sources-table-body">
                             <tr>
-                                <td colspan="7" class="empty-cell">尚未加载</td>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -477,6 +492,18 @@
                             </div>
                         </div>
 
+                        <div class="form-row form-row-full">
+                            <label for="current-source-headers">Headers（每行一个，格式 Key: Value）</label>
+                            <textarea
+                                    id="current-source-headers"
+                                    rows="5"
+                                    placeholder="例如&#10;Authorization: Bearer xxxxx&#10;User-Agent: ros-address-list-tool/1.0"
+                            ></textarea>
+                            <div class="field-help field-help-muted">
+                                URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
                         <div class="form-row">
                             <label for="current-source-priority">Priority</label>
                             <input id="current-source-priority" type="number" value="100" />
@@ -494,8 +521,105 @@
 
                         <div class="form-actions form-row-full">
                             <button type="submit" class="btn btn-primary">保存 Current Source</button>
+                            <button id="btn-test-current-source" type="button" class="btn">测试 Current Source</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <div class="panel panel-gap-top">
+                <div class="panel-toolbar">
+                    <h4>Source 测试结果</h4>
+                    <div class="toolbar-actions">
+                        <button id="btn-save-probed-source" class="btn btn-primary">一键保存本次测试参数</button>
+                        <button id="btn-clear-source-probe-result" class="btn">清空测试结果</button>
+                    </div>
+                </div>
+
+                <div class="card-grid">
+                    <div class="card compact-card">
+                        <div class="card-title">状态</div>
+                        <div id="source-probe-status" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">来源名称</div>
+                        <div id="source-probe-name" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">位置</div>
+                        <div id="source-probe-location" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">HTTP / 来源状态</div>
+                        <div id="source-probe-http-status" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Content-Type</div>
+                        <div id="source-probe-content-type" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Body 大小</div>
+                        <div id="source-probe-body-bytes" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">JSON 有效</div>
+                        <div id="source-probe-json-valid" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">JSON 类型</div>
+                        <div id="source-probe-json-type" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测到的 List 数量</div>
+                        <div id="source-probe-list-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测到的 Entry 数量</div>
+                        <div id="source-probe-entry-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Headers 数量</div>
+                        <div id="source-probe-headers-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">耗时</div>
+                        <div id="source-probe-duration" class="card-value compact-value">-</div>
+                    </div>
+                </div>
+
+                <div class="split-layout panel-gap-top">
+                    <div class="panel panel-inner">
+                        <h4>错误 / 警告</h4>
+                        <pre id="source-probe-error" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+
+                    <div class="panel panel-inner">
+                        <h4>List 名称预览</h4>
+                        <pre id="source-probe-list-names" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+                </div>
+
+                <div class="split-layout panel-gap-top">
+                    <div class="panel panel-inner">
+                        <h4>响应头预览</h4>
+                        <pre id="source-probe-response-headers" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+
+                    <div class="panel panel-inner">
+                        <h4>原始响应预览</h4>
+                        <pre id="source-probe-raw-preview" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
                 </div>
             </div>
         </section>

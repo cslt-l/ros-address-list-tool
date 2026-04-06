@@ -44,17 +44,37 @@
       "name": "desired-local-1",
       "type": "file",
       "path": "./data/desired-1.json",
-      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 100
+      "priority": 100,
+      "timeout_seconds": 15
     },
     {
       "name": "desired-local-2",
       "type": "file",
       "path": "./data/desired-2.json",
-      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 110
+      "priority": 110,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "desired-local-3",
+      "type": "url",
+      "url": "https://test.com/123",
+      "headers": {
+        "Key": "Value",
+        "Name": "123"
+      },
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "desired-local-2-copy",
+      "type": "file",
+      "path": "./data/desired-2.json",
+      "enabled": true,
+      "priority": 110,
+      "timeout_seconds": 15
     }
   ],
   "current_state_sources": [
@@ -62,9 +82,25 @@
       "name": "current-local",
       "type": "file",
       "path": "./data/current.json",
-      "timeout_seconds": 15,
       "enabled": true,
-      "priority": 100
+      "priority": 100,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "current-local-2",
+      "type": "url",
+      "url": "https://test.com/456",
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 15
+    },
+    {
+      "name": "current-local-copy",
+      "type": "file",
+      "path": "./data/current.json",
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 15
     }
   ],
   "manual_rules": [
