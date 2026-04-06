@@ -706,12 +706,15 @@ function renderSourceTable(targetBody, items, kind) {
                 ? `<span class="header-count-badge">${headerCount} 个</span>`
                 : "-";
 
+        const toggleText = item.enabled ? "停用" : "启用";
+        const enabledText = item.enabled ? "true" : "false";
+
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
       <td><span class="${typeClass}">${escapeHTML(item.type)}</span></td>
       <td>${escapeHTML(location)}</td>
       <td>${headerText}</td>
-      <td>${item.enabled ? "true" : "false"}</td>
+      <td>${enabledText}</td>
       <td>${escapeHTML(String(item.priority ?? ""))}</td>
       <td>${escapeHTML(String(item.timeout_seconds ?? ""))}</td>
       <td>
@@ -719,6 +722,7 @@ function renderSourceTable(targetBody, items, kind) {
           <button class="inline-link-btn" data-action="edit-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">编辑</button>
           <button class="inline-link-btn" data-action="copy-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">复制</button>
           <button class="inline-link-btn" data-action="test-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">测试</button>
+          <button class="inline-link-btn" data-action="toggle-source-enabled" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">${toggleText}</button>
           <button class="inline-link-btn danger" data-action="delete-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">删除</button>
         </div>
       </td>
@@ -727,7 +731,6 @@ function renderSourceTable(targetBody, items, kind) {
         targetBody.appendChild(tr);
     });
 }
-
 
 function findDesiredSourceByName(name) {
     return currentDesiredSources.find((item) => item.name === name) || null;
@@ -802,6 +805,56 @@ function copySavedSourceToForm(kind, name) {
 
     setActiveSection("sources-section");
     showMessage(`已将 ${name} 复制到 ${kind} source 表单，新名称为：${copiedName}`);
+}
+
+
+
+async function toggleSavedSourceEnabled(kind, name) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到要切换启停的 source：${name}`, true);
+        return;
+    }
+
+    const nextEnabled = !Boolean(item.enabled);
+    const actionText = nextEnabled ? "启用" : "停用";
+
+    clearMessage();
+
+    const payload = {
+        name: item.name,
+        type: item.type,
+        path: item.path,
+        url: item.url,
+        headers: item.headers,
+        timeout_seconds: item.timeout_seconds,
+        enabled: nextEnabled,
+        priority: item.priority
+    };
+
+    try {
+        if (kind === "desired") {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadDesiredSources();
+        } else {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadCurrentSources();
+        }
+
+        await loadConfig();
+
+        showMessage(`已${actionText} ${kind} source：${name}`);
+    } catch (error) {
+        showMessage(`切换 source 启停失败：${error.message}`, true);
+    }
 }
 
 function fillDesiredSourceForm(item) {
@@ -1268,6 +1321,7 @@ function bindRuleTableActions() {
 }
 
 
+
 function bindSourceTableActions() {
     desiredSourcesTableBody.addEventListener("click", async (event) => {
         const target = event.target;
@@ -1292,6 +1346,11 @@ function bindSourceTableActions() {
 
         if (action === "test-source") {
             await testSavedSource(kind, name);
+            return;
+        }
+
+        if (action === "toggle-source-enabled") {
+            await toggleSavedSourceEnabled(kind, name);
             return;
         }
 
@@ -1323,6 +1382,11 @@ function bindSourceTableActions() {
 
         if (action === "test-source") {
             await testSavedSource(kind, name);
+            return;
+        }
+
+        if (action === "toggle-source-enabled") {
+            await toggleSavedSourceEnabled(kind, name);
             return;
         }
 

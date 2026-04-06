@@ -44,7 +44,7 @@
       "name": "desired-local-1",
       "type": "file",
       "path": "./data/desired-1.json",
-      "enabled": true,
+      "enabled": false,
       "priority": 100,
       "timeout_seconds": 15
     },
@@ -52,7 +52,7 @@
       "name": "desired-local-2",
       "type": "file",
       "path": "./data/desired-2.json",
-      "enabled": true,
+      "enabled": false,
       "priority": 110,
       "timeout_seconds": 15
     },
@@ -64,7 +64,7 @@
         "Key": "Value",
         "Name": "123"
       },
-      "enabled": true,
+      "enabled": false,
       "priority": 100,
       "timeout_seconds": 15
     },
@@ -82,7 +82,7 @@
       "name": "current-local",
       "type": "file",
       "path": "./data/current.json",
-      "enabled": true,
+      "enabled": false,
       "priority": 100,
       "timeout_seconds": 15
     },
@@ -90,7 +90,7 @@
       "name": "current-local-2",
       "type": "url",
       "url": "https://test.com/456",
-      "enabled": true,
+      "enabled": false,
       "priority": 100,
       "timeout_seconds": 15
     },
