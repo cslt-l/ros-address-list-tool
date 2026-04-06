@@ -45,7 +45,7 @@
       "type": "file",
       "path": "./data/desired-1.json",
       "enabled": false,
-      "priority": 100,
+      "priority": 30,
       "timeout_seconds": 15
     },
     {

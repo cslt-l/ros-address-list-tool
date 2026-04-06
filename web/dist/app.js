@@ -723,6 +723,8 @@ function renderSourceTable(targetBody, items, kind) {
           <button class="inline-link-btn" data-action="copy-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">复制</button>
           <button class="inline-link-btn" data-action="test-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">测试</button>
           <button class="inline-link-btn" data-action="toggle-source-enabled" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">${toggleText}</button>
+          <button class="inline-link-btn" data-action="decrease-source-priority" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">-10</button>
+          <button class="inline-link-btn" data-action="increase-source-priority" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">+10</button>
           <button class="inline-link-btn danger" data-action="delete-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">删除</button>
         </div>
       </td>
@@ -772,9 +774,6 @@ function copySavedSourceToForm(kind, name) {
     const copiedName = makeCopiedSourceName(kind, item.name || "source");
 
     if (kind === "desired") {
-        // 关键点：
-        // 复制为新 source 时，必须清空 editingDesiredSourceName，
-        // 否则点击保存会变成 PUT 覆盖旧 source，而不是 POST 新增。
         editingDesiredSourceName = "";
 
         desiredSourceNameInput.value = copiedName;
@@ -788,7 +787,6 @@ function copySavedSourceToForm(kind, name) {
 
         syncSourceTypeUI("desired");
     } else {
-        // 同理，复制 current source 时也必须切回“新增模式”
         editingCurrentSourceName = "";
 
         currentSourceNameInput.value = copiedName;
@@ -805,56 +803,6 @@ function copySavedSourceToForm(kind, name) {
 
     setActiveSection("sources-section");
     showMessage(`已将 ${name} 复制到 ${kind} source 表单，新名称为：${copiedName}`);
-}
-
-
-
-async function toggleSavedSourceEnabled(kind, name) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
-
-    if (!item) {
-        showMessage(`未找到要切换启停的 source：${name}`, true);
-        return;
-    }
-
-    const nextEnabled = !Boolean(item.enabled);
-    const actionText = nextEnabled ? "启用" : "停用";
-
-    clearMessage();
-
-    const payload = {
-        name: item.name,
-        type: item.type,
-        path: item.path,
-        url: item.url,
-        headers: item.headers,
-        timeout_seconds: item.timeout_seconds,
-        enabled: nextEnabled,
-        priority: item.priority
-    };
-
-    try {
-        if (kind === "desired") {
-            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadDesiredSources();
-        } else {
-            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadCurrentSources();
-        }
-
-        await loadConfig();
-
-        showMessage(`已${actionText} ${kind} source：${name}`);
-    } catch (error) {
-        showMessage(`切换 source 启停失败：${error.message}`, true);
-    }
 }
 
 function fillDesiredSourceForm(item) {
@@ -918,6 +866,108 @@ async function testSavedSource(kind, name) {
         showMessage(`已对已保存 ${kind} source 执行测试：${name}`);
     } catch (error) {
         showMessage(`测试已保存 source 失败：${error.message}`, true);
+    }
+}
+
+async function toggleSavedSourceEnabled(kind, name) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到要切换启停的 source：${name}`, true);
+        return;
+    }
+
+    const nextEnabled = !Boolean(item.enabled);
+    const actionText = nextEnabled ? "启用" : "停用";
+
+    clearMessage();
+
+    const payload = {
+        name: item.name,
+        type: item.type,
+        path: item.path,
+        url: item.url,
+        headers: item.headers,
+        timeout_seconds: item.timeout_seconds,
+        enabled: nextEnabled,
+        priority: item.priority
+    };
+
+    try {
+        if (kind === "desired") {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadDesiredSources();
+        } else {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadCurrentSources();
+        }
+
+        await loadConfig();
+
+        showMessage(`已${actionText} ${kind} source：${name}`);
+    } catch (error) {
+        showMessage(`切换 source 启停失败：${error.message}`, true);
+    }
+}
+
+async function adjustSavedSourcePriority(kind, name, delta) {
+    const item =
+        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+
+    if (!item) {
+        showMessage(`未找到要调整优先级的 source：${name}`, true);
+        return;
+    }
+
+    const currentPriority = Number(item.priority ?? 0);
+    const nextPriority = Math.max(0, currentPriority + delta);
+
+    if (nextPriority === currentPriority) {
+        showMessage(`source：${name} 的优先级已是最小值 0`);
+        return;
+    }
+
+    clearMessage();
+
+    const payload = {
+        name: item.name,
+        type: item.type,
+        path: item.path,
+        url: item.url,
+        headers: item.headers,
+        timeout_seconds: item.timeout_seconds,
+        enabled: Boolean(item.enabled),
+        priority: nextPriority
+    };
+
+    try {
+        if (kind === "desired") {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadDesiredSources();
+        } else {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            await loadCurrentSources();
+        }
+
+        await loadConfig();
+
+        const actionText = delta > 0 ? `+${delta}` : `${delta}`;
+        showMessage(`已调整 ${kind} source：${name} 的优先级 ${actionText}，当前为 ${nextPriority}`);
+    } catch (error) {
+        showMessage(`调整 source 优先级失败：${error.message}`, true);
     }
 }
 
@@ -1320,8 +1370,6 @@ function bindRuleTableActions() {
     });
 }
 
-
-
 function bindSourceTableActions() {
     desiredSourcesTableBody.addEventListener("click", async (event) => {
         const target = event.target;
@@ -1351,6 +1399,16 @@ function bindSourceTableActions() {
 
         if (action === "toggle-source-enabled") {
             await toggleSavedSourceEnabled(kind, name);
+            return;
+        }
+
+        if (action === "decrease-source-priority") {
+            await adjustSavedSourcePriority(kind, name, -10);
+            return;
+        }
+
+        if (action === "increase-source-priority") {
+            await adjustSavedSourcePriority(kind, name, 10);
             return;
         }
 
@@ -1387,6 +1445,16 @@ function bindSourceTableActions() {
 
         if (action === "toggle-source-enabled") {
             await toggleSavedSourceEnabled(kind, name);
+            return;
+        }
+
+        if (action === "decrease-source-priority") {
+            await adjustSavedSourcePriority(kind, name, -10);
+            return;
+        }
+
+        if (action === "increase-source-priority") {
+            await adjustSavedSourcePriority(kind, name, 10);
             return;
         }
 
