@@ -1,39 +1,136 @@
 {
-  "auto_create_lists": true,
+  "auto_create_lists": false,
   "log_file": "./logs/app.log",
   "lists": [
     {
-      "name": "toWanTelecom",
+      "name": "toWanTelecom4",
       "family": "ipv4",
       "enabled": true,
-      "description": "电信出口 IPv4 列表"
+      "description": "中国电信 IPv4"
     },
     {
-      "name": "toWanMobile",
-      "family": "ipv4",
+      "name": "toWanTelecom6",
+      "family": "ipv6",
       "enabled": true,
-      "description": "移动出口 IPv4 列表"
+      "description": "中国电信 IPv6"
     },
     {
-      "name": "toWanUnicom",
+      "name": "toWanMobile4",
       "family": "ipv4",
       "enabled": true,
-      "description": "联通出口 IPv4 列表"
+      "description": "中国移动 IPv4"
     },
     {
-      "name": "toWanGlobal",
-      "family": "ipv4",
+      "name": "toWanMobile6",
+      "family": "ipv6",
       "enabled": true,
-      "description": "默认出国与未知流量列表"
+      "description": "中国移动 IPv6"
     },
     {
-      "name": "toPccBalance",
+      "name": "toWanUnicom4",
       "family": "ipv4",
       "enabled": true,
-      "description": "PCC 负载均衡候选列表"
+      "description": "中国联通 IPv4"
+    },
+    {
+      "name": "toWanUnicom6",
+      "family": "ipv6",
+      "enabled": true,
+      "description": "中国联通 IPv6"
+    },
+    {
+      "name": "toWanGlobal4",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "默认国际/未知 IPv4"
+    },
+    {
+      "name": "toWanGlobal6",
+      "family": "ipv6",
+      "enabled": true,
+      "description": "默认国际/未知 IPv6"
+    },
+    {
+      "name": "toPccBalance4",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "PCC 负载均衡 IPv4"
     }
   ],
-  "desired_sources": [],
+  "desired_sources": [
+    {
+      "name": "china-telecom-ipv4",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/chinanet.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanTelecom4",
+      "target_list_family": "ipv4",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "china-telecom-ipv6",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/chinanet6.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanTelecom6",
+      "target_list_family": "ipv6",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "china-mobile-ipv4",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/cmcc.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanMobile4",
+      "target_list_family": "ipv4",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "china-mobile-ipv6",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/cmcc6.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanMobile6",
+      "target_list_family": "ipv6",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "china-unicom-ipv4",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/unicom.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanUnicom4",
+      "target_list_family": "ipv4",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    },
+    {
+      "name": "china-unicom-ipv6",
+      "type": "url",
+      "url": "https://china-operator-ip.yfgao.com/unicom6.txt",
+      "format": "plain_cidr",
+      "target_list_name": "toWanUnicom6",
+      "target_list_family": "ipv6",
+      "line_comment_prefixes": ["#", "//", ";"],
+      "enabled": true,
+      "priority": 100,
+      "timeout_seconds": 30
+    }
+  ],
   "current_state_sources": [],
   "manual_rules": [],
   "output": {
@@ -44,7 +141,6 @@
   "server": {
     "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/dist",
-    "auth_token": ""
+    "web_dir": "./web/dist"
   }
 }
