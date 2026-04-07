@@ -1303,6 +1303,8 @@ MIT License
 
 ## 致谢
 
+项目中引用的IP信息均来自 https://github.com/gaoyifan/china-operator-ip ，在此提出特别感谢。
+
 这个项目的核心价值在于：  
 把 RouterOS address-list 的维护，从“设备上手工改”变成“配置驱动、可复用、可测试、可版本化”的工程流程。
 
@@ -1314,3 +1316,4 @@ MIT License
 - RouterOS 地址库自动化管理
 
 这个工具会非常适合作为你的基础设施之一。
+
