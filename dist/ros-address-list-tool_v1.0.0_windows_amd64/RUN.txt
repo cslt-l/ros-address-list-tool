@@ -1,0 +1,16 @@
+﻿ros-address-list-tool Windows amd64
+
+Start HTTP service:
+  .\ros-address-list-tool.exe -config .\config.json -serve -listen 127.0.0.1:8090
+
+Run one render only:
+  .\ros-address-list-tool.exe -config .\config.json
+
+Web UI:
+  http://127.0.0.1:8090/
+
+Notes:
+1. Run the program inside this release directory.
+2. output is used for generated .rsc files.
+3. logs is used for log files.
+4. For remote access, configure auth_token or ROS_LIST_API_TOKEN.

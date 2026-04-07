@@ -314,7 +314,7 @@ go run ./cmd/server -config ./configs/config.json
   "server": {
     "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/dist",
+    "web_dir": "./web/src",
     "auth_token": ""
   }
 }
@@ -712,7 +712,7 @@ add list=toWanTelecom4 address=1.0.2.0/23 comment="managed-by-go"
 "server": {
   "listen": "127.0.0.1:8090",
   "enable_web": true,
-  "web_dir": "./web/dist"
+  "web_dir": "./web/src"
 }
 ```
 
@@ -1086,7 +1086,7 @@ curl -X POST http://127.0.0.1:8090/api/v1/sources/test \
   "server": {
     "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/dist"
+    "web_dir": "./web/src"
   }
 }
 ```

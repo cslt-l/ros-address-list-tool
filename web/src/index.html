@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROS Address List Tool</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <h1>ROS Address List</h1>
+            <p>纯静态管理端</p>
+        </div>
+
+        <nav class="nav">
+            <button class="nav-item active" data-section="dashboard-section">总览</button>
+            <button class="nav-item" data-section="lists-section">Address Lists</button>
+            <button class="nav-item" data-section="rules-section">Manual Rules</button>
+            <button class="nav-item" data-section="sources-section">Sources</button>
+            <button class="nav-item" data-section="render-section">Render</button>
+            <button class="nav-item" data-section="config-section">原始配置</button>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left">
+                <h2>基础管理台</h2>
+                <p>当前阶段：Source 测试支持 HTTP 状态、响应头预览与一键保存</p>
+            </div>
+
+            <div class="topbar-actions">
+                <button id="btn-check-health" class="btn btn-primary">检查服务状态</button>
+                <button id="btn-load-config" class="btn">加载当前配置</button>
+            </div>
+        </header>
+
+        <section id="message-box" class="message-box hidden"></section>
+
+        <section id="dashboard-section" class="page-section active">
+            <div class="section-header">
+                <h3>总览</h3>
+                <p>展示系统当前摘要信息。</p>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-title">服务状态</div>
+                    <div id="dashboard-health-status" class="card-value">未检查</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Address List 数量</div>
+                    <div id="dashboard-list-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Manual Rule 数量</div>
+                    <div id="dashboard-rule-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">默认渲染模式</div>
+                    <div id="dashboard-render-mode" class="card-value">-</div>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-title">Desired Sources 数量</div>
+                    <div id="dashboard-desired-source-count" class="card-value">-</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Current Sources 数量</div>
+                    <div id="dashboard-current-source-count" class="card-value">-</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h4>当前配置摘要</h4>
+                <ul id="dashboard-summary-list" class="summary-list">
+                    <li>尚未加载配置</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="lists-section" class="page-section">
+            <div class="section-header">
+                <h3>Address Lists</h3>
+                <p>支持查询、新增、修改、删除与 description 管理。</p>
+            </div>
+
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>当前 Lists</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-lists" class="btn btn-primary">刷新列表</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Family</th>
+                                <th>Enabled</th>
+                                <th>Description</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="lists-table-body">
+                            <tr>
+                                <td colspan="5" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 List</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-list-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="list-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="list-name">Name</label>
+                            <input id="list-name" name="name" type="text" placeholder="例如 toWanIpv4" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="list-family">Family</label>
+                            <select id="list-family" name="family">
+                                <option value="ipv4">ipv4</option>
+                                <option value="ipv6">ipv6</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="list-enabled">Enabled</label>
+                            <input id="list-enabled" name="enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="list-description">Description</label>
+                            <textarea
+                                    id="list-description"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入列表说明"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-list" type="submit" class="btn btn-primary">保存 List</button>
+                        </div>
+                    </form>
+
+                    <hr class="divider" />
+
+                    <h4>单独修改 Description</h4>
+                    <form id="description-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="desc-target-name">目标 Name</label>
+                            <input
+                                    id="desc-target-name"
+                                    name="descTargetName"
+                                    type="text"
+                                    placeholder="例如 toWanTelecom"
+                            />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desc-text">Description</label>
+                            <textarea
+                                    id="desc-text"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入新的说明文字"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-description" type="submit" class="btn btn-primary">
+                                更新 Description
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section id="rules-section" class="page-section">
+            <div class="section-header">
+                <h3>Manual Rules</h3>
+                <p>支持查询、新增、修改、删除规则。</p>
+            </div>
+
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>当前 Rules</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-rules" class="btn btn-primary">刷新规则</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>List Name</th>
+                                <th>Action</th>
+                                <th>Priority</th>
+                                <th>Enabled</th>
+                                <th>Description</th>
+                                <th>Entries</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="rules-table-body">
+                            <tr>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Rule</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-rule-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="rule-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="rule-id">ID</label>
+                            <input id="rule-id" name="id" type="text" placeholder="新增时可留空或自定义" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-list-name">List Name</label>
+                            <input
+                                    id="rule-list-name"
+                                    name="list_name"
+                                    type="text"
+                                    placeholder="例如 toPccBalance"
+                            />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-action">Action</label>
+                            <select id="rule-action" name="action">
+                                <option value="add">add</option>
+                                <option value="remove">remove</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="rule-priority">Priority</label>
+                            <input
+                                    id="rule-priority"
+                                    name="priority"
+                                    type="number"
+                                    value="1000"
+                                    placeholder="例如 1000"
+                            />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="rule-enabled">Enabled</label>
+                            <input id="rule-enabled" name="enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="rule-description">Description</label>
+                            <textarea
+                                    id="rule-description"
+                                    name="description"
+                                    rows="3"
+                                    placeholder="输入规则说明"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="rule-entries">Entries（每行一个）</label>
+                            <textarea
+                                    id="rule-entries"
+                                    name="entries"
+                                    rows="6"
+                                    placeholder="例如&#10;10.10.10.10&#10;10.10.10.11"
+                            ></textarea>
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-save-rule" type="submit" class="btn btn-primary">保存 Rule</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section id="sources-section" class="page-section">
+            <div class="section-header">
+                <h3>Sources</h3>
+                <p>支持管理 Desired Sources 与 Current State Sources，并支持连接测试与预检。</p>
+            </div>
+
+            <div class="sources-grid">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>Desired Sources</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-desired-sources" class="btn btn-primary">刷新</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Path / URL</th>
+                                <th>Headers</th>
+                                <th>Enabled</th>
+                                <th>Priority</th>
+                                <th>Timeout</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="desired-sources-table-body">
+                            <tr>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <hr class="divider" />
+
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Desired Source</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-desired-source-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="desired-source-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="desired-source-name">Name</label>
+                            <input id="desired-source-name" type="text" placeholder="例如 desired-local-3" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-type">Type</label>
+                            <select id="desired-source-type">
+                                <option value="file">file</option>
+                                <option value="url">url</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-path">Path</label>
+                            <input id="desired-source-path" type="text" placeholder="./data/desired-3.json" />
+                            <div id="desired-source-path-help" class="field-help">
+                                file 类型时请填写本地路径。
+                            </div>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-url">URL</label>
+                            <input id="desired-source-url" type="text" placeholder="https://example.com/desired.json" />
+                            <div id="desired-source-url-help" class="field-help field-help-muted">
+                                url 类型时请填写可访问的远程地址。
+                            </div>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="desired-source-headers">Headers（每行一个，格式 Key: Value）</label>
+                            <textarea
+                                    id="desired-source-headers"
+                                    rows="5"
+                                    placeholder="例如&#10;Authorization: Bearer xxxxx&#10;User-Agent: ros-address-list-tool/1.0"
+                            ></textarea>
+                            <div class="field-help field-help-muted">
+                                URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-priority">Priority</label>
+                            <input id="desired-source-priority" type="number" value="100" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="desired-source-timeout">Timeout Seconds</label>
+                            <input id="desired-source-timeout" type="number" value="15" />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="desired-source-enabled">Enabled</label>
+                            <input id="desired-source-enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button type="submit" class="btn btn-primary">保存 Desired Source</button>
+                            <button id="btn-test-desired-source" type="button" class="btn">测试 Desired Source</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>Current Sources</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-refresh-current-sources" class="btn btn-primary">刷新</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Path / URL</th>
+                                <th>Headers</th>
+                                <th>Enabled</th>
+                                <th>Priority</th>
+                                <th>Timeout</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="current-sources-table-body">
+                            <tr>
+                                <td colspan="8" class="empty-cell">尚未加载</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <hr class="divider" />
+
+                    <div class="panel-toolbar">
+                        <h4>新增 / 编辑 Current Source</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-current-source-form" class="btn">重置表单</button>
+                        </div>
+                    </div>
+
+                    <form id="current-source-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="current-source-name">Name</label>
+                            <input id="current-source-name" type="text" placeholder="例如 current-local-2" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-type">Type</label>
+                            <select id="current-source-type">
+                                <option value="file">file</option>
+                                <option value="url">url</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="current-source-path">Path</label>
+                            <input id="current-source-path" type="text" placeholder="./data/current-2.json" />
+                            <div id="current-source-path-help" class="field-help">
+                                file 类型时请填写本地路径。
+                            </div>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="current-source-url">URL</label>
+                            <input id="current-source-url" type="text" placeholder="https://example.com/current.json" />
+                            <div id="current-source-url-help" class="field-help field-help-muted">
+                                url 类型时请填写可访问的远程地址。
+                            </div>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="current-source-headers">Headers（每行一个，格式 Key: Value）</label>
+                            <textarea
+                                    id="current-source-headers"
+                                    rows="5"
+                                    placeholder="例如&#10;Authorization: Bearer xxxxx&#10;User-Agent: ros-address-list-tool/1.0"
+                            ></textarea>
+                            <div class="field-help field-help-muted">
+                                URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-priority">Priority</label>
+                            <input id="current-source-priority" type="number" value="100" />
+                        </div>
+
+                        <div class="form-row">
+                            <label for="current-source-timeout">Timeout Seconds</label>
+                            <input id="current-source-timeout" type="number" value="15" />
+                        </div>
+
+                        <div class="form-row form-row-checkbox">
+                            <label for="current-source-enabled">Enabled</label>
+                            <input id="current-source-enabled" type="checkbox" checked />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button type="submit" class="btn btn-primary">保存 Current Source</button>
+                            <button id="btn-test-current-source" type="button" class="btn">测试 Current Source</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="panel panel-gap-top">
+                <div class="panel-toolbar">
+                    <h4>Source 测试结果</h4>
+                    <div class="toolbar-actions">
+                        <button id="btn-save-probed-source" class="btn btn-primary">一键保存本次测试参数</button>
+                        <button id="btn-clear-source-probe-result" class="btn">清空测试结果</button>
+                    </div>
+                </div>
+
+                <div class="card-grid">
+                    <div class="card compact-card">
+                        <div class="card-title">状态</div>
+                        <div id="source-probe-status" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">来源名称</div>
+                        <div id="source-probe-name" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">位置</div>
+                        <div id="source-probe-location" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">HTTP / 来源状态</div>
+                        <div id="source-probe-http-status" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Content-Type</div>
+                        <div id="source-probe-content-type" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Body 大小</div>
+                        <div id="source-probe-body-bytes" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">Headers 数量</div>
+                        <div id="source-probe-headers-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">耗时</div>
+                        <div id="source-probe-duration" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测格式</div>
+                        <div id="source-probe-detected-format" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测说明</div>
+                        <div id="source-probe-format-detail" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">JSON 有效</div>
+                        <div id="source-probe-json-valid" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">JSON 类型</div>
+                        <div id="source-probe-json-type" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测到的 List 数量</div>
+                        <div id="source-probe-list-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">检测到的 Entry 数量</div>
+                        <div id="source-probe-entry-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">文本有效总行数</div>
+                        <div id="source-probe-text-line-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">文本有效行数</div>
+                        <div id="source-probe-text-valid-line-count" class="card-value compact-value">-</div>
+                    </div>
+
+                    <div class="card compact-card">
+                        <div class="card-title">文本无效行数</div>
+                        <div id="source-probe-text-invalid-line-count" class="card-value compact-value">-</div>
+                    </div>
+                </div>
+
+                <div class="split-layout panel-gap-top">
+                    <div class="panel panel-inner">
+                        <h4>错误 / 警告</h4>
+                        <pre id="source-probe-error" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+
+                    <div class="panel panel-inner">
+                        <h4>List 名称预览</h4>
+                        <pre id="source-probe-list-names" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+                </div>
+
+                <div class="split-layout panel-gap-top">
+                    <div class="panel panel-inner">
+                        <h4>响应头预览</h4>
+                        <pre id="source-probe-response-headers" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+
+                    <div class="panel panel-inner">
+                        <h4>原始响应预览</h4>
+                        <pre id="source-probe-raw-preview" class="json-viewer empty-viewer">尚未执行测试</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="render-section" class="page-section">
+            <div class="section-header">
+                <h3>Render</h3>
+                <p>支持选择模式、临时输出路径，并直接查看脚本结果。</p>
+            </div>
+
+            <div class="split-layout">
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>渲染参数</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-reset-render-form" class="btn">重置渲染参数</button>
+                        </div>
+                    </div>
+
+                    <form id="render-form" class="form-grid">
+                        <div class="form-row">
+                            <label for="render-mode">Mode</label>
+                            <select id="render-mode" name="mode">
+                                <option value="">使用当前默认模式</option>
+                                <option value="replace_all">replace_all</option>
+                                <option value="diff">diff</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row form-row-full">
+                            <label for="render-output-path">临时输出路径</label>
+                            <input
+                                    id="render-output-path"
+                                    name="output_path"
+                                    type="text"
+                                    placeholder="例如 ./output/http-render-test.rsc"
+                            />
+                        </div>
+
+                        <div class="form-actions form-row-full">
+                            <button id="btn-run-render" type="submit" class="btn btn-primary">执行渲染</button>
+                            <button id="btn-clear-render-result" type="button" class="btn">清空结果</button>
+                        </div>
+                    </form>
+
+                    <hr class="divider" />
+
+                    <div class="render-summary-grid">
+                        <div class="card compact-card">
+                            <div class="card-title">返回模式</div>
+                            <div id="render-result-mode" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">List 数量</div>
+                            <div id="render-result-list-count" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">条目总数</div>
+                            <div id="render-result-entry-count" class="card-value compact-value">-</div>
+                        </div>
+
+                        <div class="card compact-card">
+                            <div class="card-title">输出路径</div>
+                            <div id="render-result-output-path" class="card-value compact-value">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-toolbar">
+                        <h4>脚本结果</h4>
+                        <div class="toolbar-actions">
+                            <button id="btn-copy-render-script" class="btn">复制脚本</button>
+                        </div>
+                    </div>
+
+                    <pre id="render-script-viewer" class="json-viewer empty-viewer">尚未执行渲染</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="config-section" class="page-section">
+            <div class="section-header">
+                <h3>原始配置查看</h3>
+                <p>这里直接显示后端当前返回的完整配置 JSON。</p>
+            </div>
+
+            <div class="panel">
+                <div class="panel-actions">
+                    <button id="btn-load-config-inline" class="btn btn-primary">重新加载配置</button>
+                </div>
+
+                <pre id="config-json-viewer" class="json-viewer">尚未加载配置</pre>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

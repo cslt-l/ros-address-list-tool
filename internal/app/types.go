@@ -236,7 +236,7 @@ func (cfg *AppConfig) ApplyDefaults() {
 
 	// 默认前端目录。
 	if cfg.Server.WebDir == "" {
-		cfg.Server.WebDir = "./web/dist"
+		cfg.Server.WebDir = "./web/src"
 	}
 
 	// 默认日志文件。

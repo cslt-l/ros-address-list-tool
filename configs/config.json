@@ -141,6 +141,6 @@
   "server": {
     "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/dist"
+    "web_dir": "./web/src"
   }
 }

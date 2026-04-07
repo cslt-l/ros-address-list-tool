@@ -43,5 +43,5 @@ Thumbs.db
 # 未来前端构建产物
 # 当前阶段先预留，后续 web/dist 若需要提交可再调整
 # =========================
-#web/dist/
+web/dist/*
 !web/dist/.gitkeep
