@@ -1,27 +1,50 @@
 {
   "auto_create_lists": true,
   "log_file": "./logs/app.log",
-  "lists": null,
-  "desired_sources": [
+  "lists": [
     {
-      "name": "to-telecom-ipv4",
-      "type": "url",
-      "url": "https://china-operator-ip.yfgao.com/chinanet.txt",
+      "name": "toWanTelecom",
+      "family": "ipv4",
       "enabled": true,
-      "priority": 100,
-      "timeout_seconds": 15
+      "description": "电信出口 IPv4 列表"
+    },
+    {
+      "name": "toWanMobile",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "移动出口 IPv4 列表"
+    },
+    {
+      "name": "toWanUnicom",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "联通出口 IPv4 列表"
+    },
+    {
+      "name": "toWanGlobal",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "默认出国与未知流量列表"
+    },
+    {
+      "name": "toPccBalance",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "PCC 负载均衡候选列表"
     }
   ],
-  "current_state_sources": null,
-  "manual_rules": null,
+  "desired_sources": [],
+  "current_state_sources": [],
+  "manual_rules": [],
   "output": {
     "path": "./output/routeros-address-list.rsc",
     "mode": "replace_all",
     "managed_comment": "managed-by-go"
   },
   "server": {
-    "listen": ":8090",
+    "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/dist"
+    "web_dir": "./web/dist",
+    "auth_token": ""
   }
 }

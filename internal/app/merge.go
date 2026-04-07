@@ -24,7 +24,6 @@ func BuildDesiredSnapshot(cfg AppConfig) (Snapshot, error) {
 	}
 
 	decisions := make(map[string]map[string]ruleDecision)
-
 	var verr ValidationError
 
 	for _, src := range loaded {
@@ -41,6 +40,7 @@ func BuildDesiredSnapshot(cfg AppConfig) (Snapshot, error) {
 				verr.add(fmt.Sprintf("source=%s list=%s 无法建立 definition：%v", src.Source.Name, list.Name, err))
 				continue
 			}
+
 			definitions[list.Name] = def
 
 			normalizedEntries, err := NormalizeAndDeduplicateEntries(list.Entries, def.Family)
@@ -76,6 +76,7 @@ func BuildDesiredSnapshot(cfg AppConfig) (Snapshot, error) {
 			verr.add(fmt.Sprintf("manual_rule=%s 无法建立 definition：%v", rule.ID, err))
 			continue
 		}
+
 		definitions[rule.ListName] = def
 
 		normalizedEntries, err := NormalizeAndDeduplicateEntries(rule.Entries, def.Family)
@@ -98,7 +99,6 @@ func BuildDesiredSnapshot(cfg AppConfig) (Snapshot, error) {
 	}
 
 	entries := make(map[string][]string)
-
 	for listName, entryMap := range decisions {
 		def, ok := definitions[listName]
 		if !ok {
@@ -115,7 +115,6 @@ func BuildDesiredSnapshot(cfg AppConfig) (Snapshot, error) {
 				entries[listName] = append(entries[listName], entry)
 			}
 		}
-
 		sort.Strings(entries[listName])
 	}
 
@@ -137,15 +136,25 @@ func BuildCurrentSnapshot(cfg AppConfig) (Snapshot, error) {
 	}
 
 	entrySet := make(map[string]map[string]struct{})
-
 	var verr ValidationError
 
 	for _, src := range loaded {
 		for _, list := range src.Lists {
+			listName := strings.TrimSpace(list.Name)
+
+			// 修复点：
+			// 当 auto_create_lists=false 时，current_state_sources 里的未知 list
+			// 不应该让整个 current snapshot 构建失败，而应该直接忽略。
+			if !cfg.AutoCreateLists {
+				if _, ok := definitions[listName]; !ok {
+					continue
+				}
+			}
+
 			def, err := ensureDefinition(
 				cfg.AutoCreateLists,
 				definitions,
-				list.Name,
+				listName,
 				list.Family,
 				list.Description,
 				list.Entries,
@@ -154,7 +163,8 @@ func BuildCurrentSnapshot(cfg AppConfig) (Snapshot, error) {
 				verr.add(fmt.Sprintf("current source=%s list=%s 无法建立 definition：%v", src.Source.Name, list.Name, err))
 				continue
 			}
-			definitions[list.Name] = def
+
+			definitions[listName] = def
 
 			normalizedEntries, err := NormalizeAndDeduplicateEntries(list.Entries, def.Family)
 			if err != nil {
@@ -162,12 +172,11 @@ func BuildCurrentSnapshot(cfg AppConfig) (Snapshot, error) {
 				continue
 			}
 
-			if _, ok := entrySet[list.Name]; !ok {
-				entrySet[list.Name] = make(map[string]struct{})
+			if _, ok := entrySet[listName]; !ok {
+				entrySet[listName] = make(map[string]struct{})
 			}
-
 			for _, entry := range normalizedEntries {
-				entrySet[list.Name][entry] = struct{}{}
+				entrySet[listName][entry] = struct{}{}
 			}
 		}
 	}
@@ -238,7 +247,6 @@ func ensureDefinition(
 			}
 		}
 	}
-
 	if inferredFamily == "" {
 		inferredFamily = FamilyIPv4
 	}

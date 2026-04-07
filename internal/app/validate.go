@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// ValidationError 用于承载“多个校验错误”。
 type ValidationError struct {
 	Messages []string
 }
@@ -25,19 +24,13 @@ func (e *ValidationError) hasError() bool {
 	return len(e.Messages) > 0
 }
 
-// listNamePattern 用于限制 address-list 名称格式。
 var listNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
-
-// sourceNamePattern 复用与 list 相同的保守规则。
-// 这样可以避免 source 名称把 HTTP 路由路径、前端路由参数和存储主键语义搅乱。
 var sourceNamePattern = listNamePattern
 
-// ValidateConfig 对整个 AppConfig 做结构层面的合法性校验。
 func ValidateConfig(cfg AppConfig) error {
 	cfg.ApplyDefaults()
 
 	var verr ValidationError
-
 	listSeen := make(map[string]struct{})
 	ruleSeen := make(map[string]struct{})
 
@@ -50,36 +43,35 @@ func ValidateConfig(cfg AppConfig) error {
 	if strings.TrimSpace(cfg.Output.ManagedComment) == "" {
 		verr.add("output.managed_comment 不能为空")
 	}
-
+	if strings.ContainsAny(cfg.Output.ManagedComment, "\"\r\n") {
+		verr.add("output.managed_comment 不能包含双引号、回车或换行")
+	}
 	if strings.TrimSpace(cfg.LogFile) == "" {
 		verr.add("log_file 不能为空")
 	}
-
 	if strings.TrimSpace(cfg.Output.Path) == "" {
 		verr.add("output.path 不能为空")
 	}
-
 	if strings.TrimSpace(cfg.Server.Listen) == "" {
 		verr.add("server.listen 不能为空")
+	}
+	if requiresAuthTokenForListen(cfg.Server.Listen) && strings.TrimSpace(cfg.Server.AuthToken) == "" {
+		verr.add("server.listen 暴露到非本机时，server.auth_token 不能为空（也可通过环境变量 ROS_LIST_API_TOKEN 提供）")
 	}
 
 	for i, item := range cfg.Lists {
 		name := strings.TrimSpace(item.Name)
-
 		if name == "" {
 			verr.add(fmt.Sprintf("lists[%d].name 不能为空", i))
 			continue
 		}
-
 		if !listNamePattern.MatchString(name) {
 			verr.add(fmt.Sprintf("lists[%d].name 非法：%q，只允许字母、数字、下划线、短横线，且需以字母或数字开头", i, name))
 		}
-
 		if _, ok := listSeen[name]; ok {
 			verr.add(fmt.Sprintf("lists[%d].name 重复：%q", i, name))
 		}
 		listSeen[name] = struct{}{}
-
 		if item.Family != FamilyIPv4 && item.Family != FamilyIPv6 {
 			verr.add(fmt.Sprintf("lists[%d].family 非法：%q，只支持 ipv4 或 ipv6", i, item.Family))
 		}
@@ -96,28 +88,52 @@ func ValidateConfig(cfg AppConfig) error {
 				if !sourceNamePattern.MatchString(name) {
 					verr.add(fmt.Sprintf("%s[%d].name 非法：%q，只允许字母、数字、下划线、短横线，且需以字母或数字开头", kind, i, name))
 				}
-
 				if _, ok := sourceSeen[name]; ok {
 					verr.add(fmt.Sprintf("%s[%d].name 重复：%q", kind, i, name))
 				}
 				sourceSeen[name] = struct{}{}
 			}
 
-			switch src.Type {
-			case "file":
-				if strings.TrimSpace(src.Path) == "" {
-					verr.add(fmt.Sprintf("%s[%d] type=file 时必须提供 path", kind, i))
-				}
-			case "url":
-				if strings.TrimSpace(src.URL) == "" {
-					verr.add(fmt.Sprintf("%s[%d] type=url 时必须提供 url", kind, i))
-				}
+			srcType := strings.TrimSpace(src.Type)
+			switch srcType {
+			case "file", "url":
 			default:
 				verr.add(fmt.Sprintf("%s[%d].type 非法：%q，只支持 file 或 url", kind, i, src.Type))
+				continue
 			}
 
-			if src.Type == "url" && src.TimeoutSeconds <= 0 {
-				verr.add(fmt.Sprintf("%s[%d].timeout_seconds 必须大于 0", kind, i))
+			format := normalizeSourceFormat(src.Format)
+			switch format {
+			case "", "json", "plain_cidr":
+			default:
+				verr.add(fmt.Sprintf("%s[%d].format 非法：%q，只支持 json 或 plain_cidr", kind, i, src.Format))
+			}
+
+			if !src.Enabled {
+				continue
+			}
+
+			if srcType == "file" && strings.TrimSpace(src.Path) == "" {
+				verr.add(fmt.Sprintf("%s[%d] type=file 时必须提供 path", kind, i))
+			}
+			if srcType == "url" {
+				if strings.TrimSpace(src.URL) == "" {
+					verr.add(fmt.Sprintf("%s[%d] type=url 时必须提供 url", kind, i))
+				} else if err := validateSourceURLString(src.URL); err != nil {
+					verr.add(fmt.Sprintf("%s[%d].url 非法：%v", kind, i, err))
+				}
+				if src.TimeoutSeconds <= 0 {
+					verr.add(fmt.Sprintf("%s[%d].timeout_seconds 必须大于 0", kind, i))
+				}
+			}
+
+			if format == "plain_cidr" {
+				if strings.TrimSpace(src.TargetListName) == "" {
+					verr.add(fmt.Sprintf("%s[%d] format=plain_cidr 时必须提供 target_list_name", kind, i))
+				}
+				if src.TargetListFamily != "" && src.TargetListFamily != FamilyIPv4 && src.TargetListFamily != FamilyIPv6 {
+					verr.add(fmt.Sprintf("%s[%d].target_list_family 非法：%q", kind, i, src.TargetListFamily))
+				}
 			}
 		}
 	}
@@ -142,7 +158,6 @@ func ValidateConfig(cfg AppConfig) error {
 			if !listNamePattern.MatchString(listName) {
 				verr.add(fmt.Sprintf("manual_rules[%d].list_name 非法：%q", i, listName))
 			}
-
 			if !cfg.AutoCreateLists {
 				if _, ok := listSeen[listName]; !ok {
 					verr.add(fmt.Sprintf("manual_rules[%d].list_name=%q 未在 lists 中定义，且当前 auto_create_lists=false", i, listName))
@@ -160,11 +175,9 @@ func ValidateConfig(cfg AppConfig) error {
 	if verr.hasError() {
 		return &verr
 	}
-
 	return nil
 }
 
-// NormalizeAndDeduplicateEntries 对一组地址条目做统一处理。
 func NormalizeAndDeduplicateEntries(entries []string, family IPFamily) ([]string, error) {
 	seen := make(map[string]struct{})
 	var out []string
@@ -176,11 +189,9 @@ func NormalizeAndDeduplicateEntries(entries []string, family IPFamily) ([]string
 			verr.add(fmt.Sprintf("entries[%d]=%q 非法：%v", idx, raw, err))
 			continue
 		}
-
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
-
 		seen[normalized] = struct{}{}
 		out = append(out, normalized)
 	}
@@ -188,12 +199,10 @@ func NormalizeAndDeduplicateEntries(entries []string, family IPFamily) ([]string
 	if verr.hasError() {
 		return nil, &verr
 	}
-
 	sort.Strings(out)
 	return out, nil
 }
 
-// NormalizeAddress 对单个地址或 CIDR 做校验与规范化。
 func NormalizeAddress(raw string, expectFamily IPFamily) (string, IPFamily, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -205,16 +214,13 @@ func NormalizeAddress(raw string, expectFamily IPFamily) (string, IPFamily, erro
 		if err != nil {
 			return "", "", fmt.Errorf("不是合法 CIDR")
 		}
-
 		family := detectIPFamily(ip)
 		if family == "" {
 			return "", "", fmt.Errorf("无法识别地址族")
 		}
-
 		if expectFamily != "" && family != expectFamily {
 			return "", family, fmt.Errorf("地址族不匹配，期望 %s，实际 %s", expectFamily, family)
 		}
-
 		return ipNet.String(), family, nil
 	}
 
@@ -222,16 +228,13 @@ func NormalizeAddress(raw string, expectFamily IPFamily) (string, IPFamily, erro
 	if ip == nil {
 		return "", "", fmt.Errorf("不是合法 IP")
 	}
-
 	family := detectIPFamily(ip)
 	if family == "" {
 		return "", "", fmt.Errorf("无法识别地址族")
 	}
-
 	if expectFamily != "" && family != expectFamily {
 		return "", family, fmt.Errorf("地址族不匹配，期望 %s，实际 %s", expectFamily, family)
 	}
-
 	if family == FamilyIPv4 {
 		return ip.To4().String(), family, nil
 	}
@@ -242,14 +245,11 @@ func detectIPFamily(ip net.IP) IPFamily {
 	if ip == nil {
 		return ""
 	}
-
 	if ip.To4() != nil {
 		return FamilyIPv4
 	}
-
 	if ip.To16() != nil {
 		return FamilyIPv6
 	}
-
 	return ""
 }
