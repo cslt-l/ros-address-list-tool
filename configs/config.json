@@ -41,68 +41,15 @@
   ],
   "desired_sources": [
     {
-      "name": "desired-local-1",
-      "type": "file",
-      "path": "./data/desired-1.json",
-      "enabled": false,
-      "priority": 30,
-      "timeout_seconds": 15
-    },
-    {
-      "name": "desired-local-2",
-      "type": "file",
-      "path": "./data/desired-2.json",
-      "enabled": false,
-      "priority": 110,
-      "timeout_seconds": 15
-    },
-    {
-      "name": "desired-local-3",
+      "name": "to-telecom-ipv4",
       "type": "url",
-      "url": "https://test.com/123",
-      "headers": {
-        "Key": "Value",
-        "Name": "123"
-      },
-      "enabled": false,
-      "priority": 100,
-      "timeout_seconds": 15
-    },
-    {
-      "name": "desired-local-2-copy",
-      "type": "file",
-      "path": "./data/desired-2.json",
-      "enabled": true,
-      "priority": 110,
-      "timeout_seconds": 15
-    }
-  ],
-  "current_state_sources": [
-    {
-      "name": "current-local",
-      "type": "file",
-      "path": "./data/current.json",
-      "enabled": false,
-      "priority": 100,
-      "timeout_seconds": 15
-    },
-    {
-      "name": "current-local-2",
-      "type": "url",
-      "url": "https://test.com/456",
-      "enabled": false,
-      "priority": 100,
-      "timeout_seconds": 15
-    },
-    {
-      "name": "current-local-copy",
-      "type": "file",
-      "path": "./data/current.json",
+      "url": "https://china-operator-ip.yfgao.com/chinanet.txt",
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 15
     }
   ],
+  "current_state_sources": null,
   "manual_rules": [
     {
       "id": "rule-telecom-add",

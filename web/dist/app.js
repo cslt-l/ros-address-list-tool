@@ -1,6 +1,5 @@
 const navButtons = Array.from(document.querySelectorAll(".nav-item"));
 const sections = Array.from(document.querySelectorAll(".page-section"));
-
 const messageBox = document.getElementById("message-box");
 
 const btnCheckHealth = document.getElementById("btn-check-health");
@@ -17,6 +16,7 @@ const btnRefreshDesiredSources = document.getElementById("btn-refresh-desired-so
 const btnResetDesiredSourceForm = document.getElementById("btn-reset-desired-source-form");
 const btnRefreshCurrentSources = document.getElementById("btn-refresh-current-sources");
 const btnResetCurrentSourceForm = document.getElementById("btn-reset-current-source-form");
+
 const btnTestDesiredSource = document.getElementById("btn-test-desired-source");
 const btnTestCurrentSource = document.getElementById("btn-test-current-source");
 const btnSaveProbedSource = document.getElementById("btn-save-probed-source");
@@ -33,6 +33,7 @@ const renderModeEl = document.getElementById("dashboard-render-mode");
 const desiredSourceCountEl = document.getElementById("dashboard-desired-source-count");
 const currentSourceCountEl = document.getElementById("dashboard-current-source-count");
 const summaryListEl = document.getElementById("dashboard-summary-list");
+
 const configViewerEl = document.getElementById("config-json-viewer");
 
 const listsTableBody = document.getElementById("lists-table-body");
@@ -83,6 +84,7 @@ const currentSourceEnabledInput = document.getElementById("current-source-enable
 const currentSourcePathHelp = document.getElementById("current-source-path-help");
 const currentSourceURLHelp = document.getElementById("current-source-url-help");
 
+// Source Probe 基础字段
 const sourceProbeStatusEl = document.getElementById("source-probe-status");
 const sourceProbeNameEl = document.getElementById("source-probe-name");
 const sourceProbeLocationEl = document.getElementById("source-probe-location");
@@ -99,6 +101,13 @@ const sourceProbeErrorEl = document.getElementById("source-probe-error");
 const sourceProbeListNamesEl = document.getElementById("source-probe-list-names");
 const sourceProbeResponseHeadersEl = document.getElementById("source-probe-response-headers");
 const sourceProbeRawPreviewEl = document.getElementById("source-probe-raw-preview");
+
+// Source Probe 新增字段（如果 index.html 尚未替换，这些可能为 null，不影响运行）
+const sourceProbeDetectedFormatEl = document.getElementById("source-probe-detected-format");
+const sourceProbeFormatDetailEl = document.getElementById("source-probe-format-detail");
+const sourceProbeTextLineCountEl = document.getElementById("source-probe-text-line-count");
+const sourceProbeTextValidLineCountEl = document.getElementById("source-probe-text-valid-line-count");
+const sourceProbeTextInvalidLineCountEl = document.getElementById("source-probe-text-invalid-line-count");
 
 const renderForm = document.getElementById("render-form");
 const renderModeSelect = document.getElementById("render-mode");
@@ -121,9 +130,34 @@ let editingDesiredSourceName = "";
 let editingCurrentSourceName = "";
 
 let currentRenderResult = null;
+
 let lastProbeKind = "";
 let lastProbePayload = null;
 let lastProbeSourceName = "";
+let lastProbeResult = null;
+
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function showMessage(message, isError = false) {
+    if (!messageBox) return;
+    messageBox.textContent = String(message || "");
+    messageBox.classList.remove("hidden");
+    messageBox.classList.toggle("error", Boolean(isError));
+}
+
+function clearMessage() {
+    if (!messageBox) return;
+    messageBox.textContent = "";
+    messageBox.classList.add("hidden");
+    messageBox.classList.remove("error");
+}
 
 function setActiveSection(sectionId) {
     clearMessage();
@@ -139,34 +173,37 @@ function setActiveSection(sectionId) {
     });
 }
 
-navButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-        const sectionId = button.dataset.section;
-        if (sectionId) {
-            setActiveSection(sectionId);
-        }
-    });
-});
-
-function showMessage(message, isError = false) {
-    messageBox.textContent = message;
-    messageBox.classList.remove("hidden");
-    messageBox.classList.toggle("error", isError);
+function setCompactValue(el, value) {
+    if (!el) return;
+    if (value === null || value === undefined || value === "") {
+        el.textContent = "-";
+        return;
+    }
+    el.textContent = String(value);
 }
 
-function clearMessage() {
-    messageBox.textContent = "";
-    messageBox.classList.add("hidden");
-    messageBox.classList.remove("error");
+function setPreBlock(el, value, emptyText = "-") {
+    if (!el) return;
+    const text = String(value ?? "").trim();
+    el.textContent = text || emptyText;
+    el.classList.toggle("empty-viewer", !text);
+}
+
+function safeJSONStringify(value) {
+    try {
+        return JSON.stringify(value ?? null, null, 2);
+    } catch (_) {
+        return String(value ?? "");
+    }
 }
 
 async function apiFetch(path, options = {}) {
     const response = await fetch(path, {
         headers: {
             "Content-Type": "application/json; charset=utf-8",
-            ...(options.headers || {})
+            ...(options.headers || {}),
         },
-        ...options
+        ...options,
     });
 
     const text = await response.text();
@@ -174,7 +211,7 @@ async function apiFetch(path, options = {}) {
 
     try {
         data = text ? JSON.parse(text) : null;
-    } catch (err) {
+    } catch (_) {
         throw new Error(`响应不是合法 JSON：${text}`);
     }
 
@@ -189,16 +226,141 @@ async function apiFetch(path, options = {}) {
     return data;
 }
 
+function parseHeadersText(text) {
+    const lines = String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    const headers = {};
+
+    for (const line of lines) {
+        const index = line.indexOf(":");
+        if (index <= 0) {
+            throw new Error(`Headers 格式错误：${line}`);
+        }
+        const key = line.slice(0, index).trim();
+        const value = line.slice(index + 1).trim();
+        if (!key) {
+            throw new Error(`Headers key 不能为空：${line}`);
+        }
+        headers[key] = value;
+    }
+
+    return headers;
+}
+
+function stringifyHeadersMap(headers) {
+    if (!headers || typeof headers !== "object") {
+        return "";
+    }
+
+    return Object.entries(headers)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\n");
+}
+
+function makeActionButton(label, className, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className || "btn btn-sm";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+}
+
+function appendEmptyRow(tbody, colSpan, text) {
+    tbody.innerHTML = "";
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = colSpan;
+    td.textContent = text;
+    td.style.textAlign = "center";
+    td.style.opacity = "0.75";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+}
+
+function boolText(v) {
+    return v ? "true" : "false";
+}
+
+function getSourceLocation(item) {
+    return item?.type === "url" ? (item?.url || "") : (item?.path || "");
+}
+
+function syncSourceTypeUI(kind) {
+    const isDesired = kind === "desired";
+
+    const typeSelect = isDesired ? desiredSourceTypeSelect : currentSourceTypeSelect;
+    const pathInput = isDesired ? desiredSourcePathInput : currentSourcePathInput;
+    const urlInput = isDesired ? desiredSourceURLInput : currentSourceURLInput;
+    const headersInput = isDesired ? desiredSourceHeadersInput : currentSourceHeadersInput;
+    const pathHelp = isDesired ? desiredSourcePathHelp : currentSourcePathHelp;
+    const urlHelp = isDesired ? desiredSourceURLHelp : currentSourceURLHelp;
+
+    if (!typeSelect) return;
+
+    const isFile = typeSelect.value === "file";
+    const isURL = typeSelect.value === "url";
+
+    if (pathInput) pathInput.disabled = !isFile;
+    if (urlInput) urlInput.disabled = !isURL;
+    if (headersInput) headersInput.disabled = !isURL;
+
+    if (pathHelp) {
+        pathHelp.style.opacity = isFile ? "1" : "0.55";
+    }
+    if (urlHelp) {
+        urlHelp.style.opacity = isURL ? "1" : "0.55";
+    }
+}
+
+function renderConfigToDashboard(config) {
+    if (!config) return;
+
+    setCompactValue(listCountEl, config.lists?.length ?? 0);
+    setCompactValue(ruleCountEl, config.manual_rules?.length ?? 0);
+    setCompactValue(renderModeEl, config.output?.mode ?? "-");
+    setCompactValue(desiredSourceCountEl, config.desired_sources?.length ?? 0);
+    setCompactValue(currentSourceCountEl, config.current_state_sources?.length ?? 0);
+
+    if (summaryListEl) {
+        summaryListEl.innerHTML = "";
+
+        const summaryItems = [
+            `自动创建未知 list：${String(config.auto_create_lists)}`,
+            `日志文件：${config.log_file ?? "-"}`,
+            `输出路径：${config.output?.path ?? "-"}`,
+            `managed comment：${config.output?.managed_comment ?? "-"}`,
+            `监听地址：${config.server?.listen ?? "-"}`,
+            `desired_sources 数量：${config.desired_sources?.length ?? 0}`,
+            `current_state_sources 数量：${config.current_state_sources?.length ?? 0}`,
+        ];
+
+        summaryItems.forEach((item) => {
+            const li = document.createElement("li");
+            li.textContent = item;
+            summaryListEl.appendChild(li);
+        });
+    }
+}
+
+function renderConfigToViewer(config) {
+    if (!configViewerEl) return;
+    configViewerEl.textContent = safeJSONStringify(config);
+    configViewerEl.classList.toggle("empty-viewer", !config);
+}
+
 async function checkHealth() {
     clearMessage();
-
     try {
-        healthStatusEl.textContent = "检查中...";
+        setCompactValue(healthStatusEl, "检查中...");
         const data = await apiFetch("/healthz");
-        healthStatusEl.textContent = data.status || "unknown";
+        setCompactValue(healthStatusEl, data?.status || "unknown");
         showMessage("服务状态检查成功。");
     } catch (error) {
-        healthStatusEl.textContent = "失败";
+        setCompactValue(healthStatusEl, "失败");
         showMessage(`服务状态检查失败：${error.message}`, true);
     }
 }
@@ -209,40 +371,20 @@ async function loadConfig() {
         currentConfig = data;
         renderConfigToDashboard(data);
         renderConfigToViewer(data);
+
+        if (renderModeSelect && renderModeSelect.value === "") {
+            renderModeSelect.value = data?.output?.mode || "";
+        }
+
+        if (renderOutputPathInput && !renderOutputPathInput.value) {
+            renderOutputPathInput.value = data?.output?.path || "";
+        }
     } catch (error) {
         showMessage(`配置加载失败：${error.message}`, true);
     }
 }
 
-function renderConfigToDashboard(config) {
-    listCountEl.textContent = String(config.lists?.length ?? 0);
-    ruleCountEl.textContent = String(config.manual_rules?.length ?? 0);
-    renderModeEl.textContent = String(config.output?.mode ?? "-");
-    desiredSourceCountEl.textContent = String(config.desired_sources?.length ?? 0);
-    currentSourceCountEl.textContent = String(config.current_state_sources?.length ?? 0);
-
-    const summaryItems = [
-        `自动创建未知 list：${String(config.auto_create_lists)}`,
-        `日志文件：${config.log_file ?? "-"}`,
-        `输出路径：${config.output?.path ?? "-"}`,
-        `managed comment：${config.output?.managed_comment ?? "-"}`,
-        `监听地址：${config.server?.listen ?? "-"}`,
-        `desired_sources 数量：${config.desired_sources?.length ?? 0}`,
-        `current_state_sources 数量：${config.current_state_sources?.length ?? 0}`
-    ];
-
-    summaryListEl.innerHTML = "";
-    summaryItems.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = item;
-        summaryListEl.appendChild(li);
-    });
-}
-
-function renderConfigToViewer(config) {
-    configViewerEl.textContent = JSON.stringify(config, null, 2);
-}
-
+// Lists
 async function loadLists() {
     try {
         const lists = await apiFetch("/api/v1/lists");
@@ -260,35 +402,46 @@ async function loadLists() {
 }
 
 function renderListsTable(lists) {
-    listsTableBody.innerHTML = "";
+    if (!listsTableBody) return;
 
     if (!lists.length) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="5" class="empty-cell">当前没有任何 list</td>`;
-        listsTableBody.appendChild(tr);
+        appendEmptyRow(listsTableBody, 5, "当前没有任何 list");
         return;
     }
 
+    listsTableBody.innerHTML = "";
+
     lists.forEach((item) => {
         const tr = document.createElement("tr");
-        const enabledText = item.enabled ? "true" : "false";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
       <td>${escapeHTML(item.family)}</td>
-      <td>${enabledText}</td>
+      <td>${boolText(item.enabled)}</td>
       <td>${escapeHTML(item.description || "")}</td>
-      <td>
-        <div class="inline-actions">
-          <button class="inline-link-btn" data-action="edit-list" data-name="${encodeURIComponent(item.name)}">编辑</button>
-          <button class="inline-link-btn" data-action="desc-list" data-name="${encodeURIComponent(item.name)}">改说明</button>
-          <button class="inline-link-btn danger" data-action="delete-list" data-name="${encodeURIComponent(item.name)}">删除</button>
-        </div>
-      </td>
+      <td></td>
     `;
+
+        const actionCell = tr.lastElementChild;
+
+        actionCell.appendChild(
+            makeActionButton("编辑", "btn btn-sm", () => editList(item.name))
+        );
+        actionCell.appendChild(
+            makeActionButton("改说明", "btn btn-sm", () => fillDescriptionForm(item))
+        );
+        actionCell.appendChild(
+            makeActionButton("删除", "btn btn-sm btn-danger", () => deleteList(item.name))
+        );
 
         listsTableBody.appendChild(tr);
     });
+}
+
+function fillDescriptionForm(item) {
+    if (!item) return;
+    descTargetNameInput.value = item.name || "";
+    descTextInput.value = item.description || "";
 }
 
 async function getListByName(name) {
@@ -297,19 +450,14 @@ async function getListByName(name) {
 
 async function editList(name) {
     clearMessage();
-
     try {
         const item = await getListByName(name);
-
-        editingListName = item.name;
+        editingListName = item.name || "";
         listNameInput.value = item.name || "";
         listFamilySelect.value = item.family || "ipv4";
         listEnabledInput.checked = Boolean(item.enabled);
         listDescriptionInput.value = item.description || "";
-
-        descTargetNameInput.value = item.name || "";
-        descTextInput.value = item.description || "";
-
+        fillDescriptionForm(item);
         setActiveSection("lists-section");
         showMessage(`已加载 ${name} 到 list 编辑表单。`);
     } catch (error) {
@@ -325,7 +473,7 @@ async function deleteList(name) {
 
     try {
         await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}`, {
-            method: "DELETE"
+            method: "DELETE",
         });
 
         if (editingListName === name) {
@@ -347,9 +495,9 @@ async function deleteList(name) {
 
 function resetListForm() {
     editingListName = "";
-    listForm.reset();
-    listFamilySelect.value = "ipv4";
-    listEnabledInput.checked = true;
+    if (listForm) listForm.reset();
+    if (listFamilySelect) listFamilySelect.value = "ipv4";
+    if (listEnabledInput) listEnabledInput.checked = true;
 }
 
 async function submitListForm(event) {
@@ -358,7 +506,7 @@ async function submitListForm(event) {
 
     const name = listNameInput.value.trim();
     const family = listFamilySelect.value;
-    const enabled = listEnabledInput.checked;
+    const enabled = Boolean(listEnabledInput.checked);
     const description = listDescriptionInput.value;
 
     if (!name) {
@@ -366,31 +514,25 @@ async function submitListForm(event) {
         return;
     }
 
-    const payload = {
-        name,
-        family,
-        enabled,
-        description
-    };
+    const payload = { name, family, enabled, description };
 
     try {
         if (editingListName && editingListName === name) {
             await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}`, {
                 method: "PUT",
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             showMessage(`已更新 list：${name}`);
         } else {
             await apiFetch("/api/v1/lists", {
                 method: "POST",
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             showMessage(`已新增 list：${name}`);
         }
 
         await loadLists();
         await loadConfig();
-
         editingListName = name;
     } catch (error) {
         showMessage(`保存 list 失败：${error.message}`, true);
@@ -412,7 +554,7 @@ async function submitDescriptionForm(event) {
     try {
         await apiFetch(`/api/v1/lists/${encodeURIComponent(name)}/description`, {
             method: "PUT",
-            body: JSON.stringify({ description })
+            body: JSON.stringify({ description }),
         });
 
         await loadLists();
@@ -424,6 +566,7 @@ async function submitDescriptionForm(event) {
     }
 }
 
+// Rules
 async function loadRules() {
     try {
         const rules = await apiFetch("/api/v1/manual-rules");
@@ -441,35 +584,38 @@ async function loadRules() {
 }
 
 function renderRulesTable(rules) {
-    rulesTableBody.innerHTML = "";
+    if (!rulesTableBody) return;
 
     if (!rules.length) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="8" class="empty-cell">当前没有任何 rule</td>`;
-        rulesTableBody.appendChild(tr);
+        appendEmptyRow(rulesTableBody, 8, "当前没有任何 rule");
         return;
     }
 
+    rulesTableBody.innerHTML = "";
+
     rules.forEach((item) => {
         const tr = document.createElement("tr");
-        const enabledText = item.enabled ? "true" : "false";
         const entriesText = Array.isArray(item.entries) ? item.entries.join(", ") : "";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.id)}</td>
       <td>${escapeHTML(item.list_name)}</td>
       <td>${escapeHTML(item.action)}</td>
-      <td>${escapeHTML(String(item.priority))}</td>
-      <td>${enabledText}</td>
+      <td>${escapeHTML(String(item.priority ?? ""))}</td>
+      <td>${boolText(item.enabled)}</td>
       <td>${escapeHTML(item.description || "")}</td>
       <td>${escapeHTML(entriesText)}</td>
-      <td>
-        <div class="inline-actions">
-          <button class="inline-link-btn" data-action="edit-rule" data-id="${encodeURIComponent(item.id)}">编辑</button>
-          <button class="inline-link-btn danger" data-action="delete-rule" data-id="${encodeURIComponent(item.id)}">删除</button>
-        </div>
-      </td>
+      <td></td>
     `;
+
+        const actionCell = tr.lastElementChild;
+
+        actionCell.appendChild(
+            makeActionButton("编辑", "btn btn-sm", () => editRule(item.id))
+        );
+        actionCell.appendChild(
+            makeActionButton("删除", "btn btn-sm btn-danger", () => deleteRule(item.id))
+        );
 
         rulesTableBody.appendChild(tr);
     });
@@ -477,13 +623,15 @@ function renderRulesTable(rules) {
 
 function resetRuleForm() {
     editingRuleId = "";
-    ruleForm.reset();
-    ruleActionSelect.value = "add";
-    rulePriorityInput.value = "1000";
-    ruleEnabledInput.checked = true;
+    if (ruleForm) ruleForm.reset();
+    if (ruleActionSelect) ruleActionSelect.value = "add";
+    if (rulePriorityInput) rulePriorityInput.value = "1000";
+    if (ruleEnabledInput) ruleEnabledInput.checked = true;
 }
 
 function fillRuleForm(rule) {
+    if (!rule) return;
+
     editingRuleId = rule.id || "";
     ruleIdInput.value = rule.id || "";
     ruleListNameInput.value = rule.list_name || "";
@@ -491,7 +639,9 @@ function fillRuleForm(rule) {
     rulePriorityInput.value = String(rule.priority ?? 1000);
     ruleEnabledInput.checked = Boolean(rule.enabled);
     ruleDescriptionInput.value = rule.description || "";
-    ruleEntriesInput.value = Array.isArray(rule.entries) ? rule.entries.join("\n") : "";
+    ruleEntriesInput.value = Array.isArray(rule.entries)
+        ? rule.entries.join("\n")
+        : "";
 }
 
 function findRuleById(id) {
@@ -518,7 +668,7 @@ async function deleteRule(id) {
 
     try {
         await apiFetch(`/api/v1/manual-rules/${encodeURIComponent(id)}`, {
-            method: "DELETE"
+            method: "DELETE",
         });
 
         if (editingRuleId === id) {
@@ -542,7 +692,7 @@ async function submitRuleForm(event) {
     const listName = ruleListNameInput.value.trim();
     const action = ruleActionSelect.value;
     const priority = Number(rulePriorityInput.value || 0);
-    const enabled = ruleEnabledInput.checked;
+    const enabled = Boolean(ruleEnabledInput.checked);
     const description = ruleDescriptionInput.value;
     const entries = ruleEntriesInput.value
         .split("\n")
@@ -566,20 +716,20 @@ async function submitRuleForm(event) {
         priority,
         enabled,
         description,
-        entries
+        entries,
     };
 
     try {
         if (editingRuleId) {
             await apiFetch(`/api/v1/manual-rules/${encodeURIComponent(editingRuleId)}`, {
                 method: "PUT",
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             showMessage(`已更新 rule：${editingRuleId}`);
         } else {
             await apiFetch("/api/v1/manual-rules", {
                 method: "POST",
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             showMessage(`已新增 rule：${id || "（由后端生成 ID）"}`);
         }
@@ -595,46 +745,10 @@ async function submitRuleForm(event) {
     }
 }
 
-function parseHeadersText(text) {
-    const lines = String(text || "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-    const headers = {};
-
-    for (const line of lines) {
-        const index = line.indexOf(":");
-        if (index <= 0) {
-            throw new Error(`Headers 格式错误：${line}`);
-        }
-
-        const key = line.slice(0, index).trim();
-        const value = line.slice(index + 1).trim();
-
-        if (!key) {
-            throw new Error(`Headers key 不能为空：${line}`);
-        }
-
-        headers[key] = value;
-    }
-
-    return headers;
-}
-
-function stringifyHeadersMap(headers) {
-    if (!headers || typeof headers !== "object") {
-        return "";
-    }
-
-    return Object.entries(headers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("\n");
-}
-
+// Sources
 function resetDesiredSourceForm() {
     editingDesiredSourceName = "";
-    desiredSourceForm.reset();
+    if (desiredSourceForm) desiredSourceForm.reset();
     desiredSourceHeadersInput.value = "";
     desiredSourceTypeSelect.value = "file";
     desiredSourcePriorityInput.value = "100";
@@ -645,7 +759,7 @@ function resetDesiredSourceForm() {
 
 function resetCurrentSourceForm() {
     editingCurrentSourceName = "";
-    currentSourceForm.reset();
+    if (currentSourceForm) currentSourceForm.reset();
     currentSourceHeadersInput.value = "";
     currentSourceTypeSelect.value = "file";
     currentSourcePriorityInput.value = "100";
@@ -687,390 +801,211 @@ async function loadCurrentSources() {
 }
 
 function renderSourceTable(targetBody, items, kind) {
-    targetBody.innerHTML = "";
+    if (!targetBody) return;
 
     if (!items.length) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="8" class="empty-cell">当前没有任何 source</td>`;
-        targetBody.appendChild(tr);
+        appendEmptyRow(targetBody, 8, "当前没有任何 source");
         return;
     }
 
+    targetBody.innerHTML = "";
+
     items.forEach((item) => {
         const tr = document.createElement("tr");
-        const location = item.type === "url" ? item.url || "" : item.path || "";
-        const typeClass = item.type === "url" ? "source-type-badge url" : "source-type-badge";
+        const location = getSourceLocation(item);
         const headerCount = item.headers ? Object.keys(item.headers).length : 0;
-        const headerText =
-            headerCount > 0
-                ? `<span class="header-count-badge">${headerCount} 个</span>`
-                : "-";
-
+        const headerText = headerCount > 0 ? `${headerCount} 个` : "-";
+        const enabledText = boolText(item.enabled);
         const toggleText = item.enabled ? "停用" : "启用";
-        const enabledText = item.enabled ? "true" : "false";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
-      <td><span class="${typeClass}">${escapeHTML(item.type)}</span></td>
+      <td>${escapeHTML(item.type)}</td>
       <td>${escapeHTML(location)}</td>
-      <td>${headerText}</td>
+      <td>${escapeHTML(headerText)}</td>
       <td>${enabledText}</td>
       <td>${escapeHTML(String(item.priority ?? ""))}</td>
       <td>${escapeHTML(String(item.timeout_seconds ?? ""))}</td>
-      <td>
-        <div class="inline-actions">
-          <button class="inline-link-btn" data-action="edit-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">编辑</button>
-          <button class="inline-link-btn" data-action="copy-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">复制</button>
-          <button class="inline-link-btn" data-action="test-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">测试</button>
-          <button class="inline-link-btn" data-action="toggle-source-enabled" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">${toggleText}</button>
-          <button class="inline-link-btn" data-action="decrease-source-priority" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">-10</button>
-          <button class="inline-link-btn" data-action="increase-source-priority" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">+10</button>
-          <button class="inline-link-btn danger" data-action="delete-source" data-kind="${kind}" data-name="${encodeURIComponent(item.name)}">删除</button>
-        </div>
-      </td>
+      <td></td>
     `;
+
+        const actionCell = tr.lastElementChild;
+
+        actionCell.appendChild(
+            makeActionButton("编辑", "btn btn-sm", () => editSource(kind, item.name))
+        );
+        actionCell.appendChild(
+            makeActionButton(toggleText, "btn btn-sm", () => toggleSourceEnabled(kind, item.name))
+        );
+        actionCell.appendChild(
+            makeActionButton("删除", "btn btn-sm btn-danger", () => deleteSource(kind, item.name))
+        );
 
         targetBody.appendChild(tr);
     });
 }
 
-function findDesiredSourceByName(name) {
-    return currentDesiredSources.find((item) => item.name === name) || null;
-}
-
-function findCurrentSourceByName(name) {
-    return currentCurrentSources.find((item) => item.name === name) || null;
-}
-
-function makeCopiedSourceName(kind, originalName) {
-    const items = kind === "desired" ? currentDesiredSources : currentCurrentSources;
-    const existingNames = new Set(items.map((item) => item.name));
-
-    const baseName = originalName.endsWith("-copy")
-        ? originalName
-        : `${originalName}-copy`;
-
-    if (!existingNames.has(baseName)) {
-        return baseName;
-    }
-
-    let index = 2;
-    while (existingNames.has(`${baseName}-${index}`)) {
-        index += 1;
-    }
-
-    return `${baseName}-${index}`;
-}
-
-function copySavedSourceToForm(kind, name) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
-
-    if (!item) {
-        showMessage(`未找到要复制的 source：${name}`, true);
-        return;
-    }
-
-    const copiedName = makeCopiedSourceName(kind, item.name || "source");
-
-    if (kind === "desired") {
-        editingDesiredSourceName = "";
-
-        desiredSourceNameInput.value = copiedName;
-        desiredSourceTypeSelect.value = item.type || "file";
-        desiredSourcePathInput.value = item.path || "";
-        desiredSourceURLInput.value = item.url || "";
-        desiredSourceHeadersInput.value = stringifyHeadersMap(item.headers);
-        desiredSourcePriorityInput.value = String(item.priority ?? 100);
-        desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
-        desiredSourceEnabledInput.checked = Boolean(item.enabled);
-
-        syncSourceTypeUI("desired");
-    } else {
-        editingCurrentSourceName = "";
-
-        currentSourceNameInput.value = copiedName;
-        currentSourceTypeSelect.value = item.type || "file";
-        currentSourcePathInput.value = item.path || "";
-        currentSourceURLInput.value = item.url || "";
-        currentSourceHeadersInput.value = stringifyHeadersMap(item.headers);
-        currentSourcePriorityInput.value = String(item.priority ?? 100);
-        currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
-        currentSourceEnabledInput.checked = Boolean(item.enabled);
-
-        syncSourceTypeUI("current");
-    }
-
-    setActiveSection("sources-section");
-    showMessage(`已将 ${name} 复制到 ${kind} source 表单，新名称为：${copiedName}`);
-}
-
 function fillDesiredSourceForm(item) {
-    editingDesiredSourceName = item.name || "";
-    desiredSourceNameInput.value = item.name || "";
-    desiredSourceTypeSelect.value = item.type || "file";
-    desiredSourcePathInput.value = item.path || "";
-    desiredSourceURLInput.value = item.url || "";
-    desiredSourceHeadersInput.value = stringifyHeadersMap(item.headers);
-    desiredSourcePriorityInput.value = String(item.priority ?? 100);
-    desiredSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
-    desiredSourceEnabledInput.checked = Boolean(item.enabled);
+    editingDesiredSourceName = item?.name || "";
+    desiredSourceNameInput.value = item?.name || "";
+    desiredSourceTypeSelect.value = item?.type || "file";
+    desiredSourcePathInput.value = item?.path || "";
+    desiredSourceURLInput.value = item?.url || "";
+    desiredSourceHeadersInput.value = stringifyHeadersMap(item?.headers);
+    desiredSourcePriorityInput.value = String(item?.priority ?? 100);
+    desiredSourceTimeoutInput.value = String(item?.timeout_seconds ?? 15);
+    desiredSourceEnabledInput.checked = Boolean(item?.enabled);
     syncSourceTypeUI("desired");
 }
 
 function fillCurrentSourceForm(item) {
-    editingCurrentSourceName = item.name || "";
-    currentSourceNameInput.value = item.name || "";
-    currentSourceTypeSelect.value = item.type || "file";
-    currentSourcePathInput.value = item.path || "";
-    currentSourceURLInput.value = item.url || "";
-    currentSourceHeadersInput.value = stringifyHeadersMap(item.headers);
-    currentSourcePriorityInput.value = String(item.priority ?? 100);
-    currentSourceTimeoutInput.value = String(item.timeout_seconds ?? 15);
-    currentSourceEnabledInput.checked = Boolean(item.enabled);
+    editingCurrentSourceName = item?.name || "";
+    currentSourceNameInput.value = item?.name || "";
+    currentSourceTypeSelect.value = item?.type || "file";
+    currentSourcePathInput.value = item?.path || "";
+    currentSourceURLInput.value = item?.url || "";
+    currentSourceHeadersInput.value = stringifyHeadersMap(item?.headers);
+    currentSourcePriorityInput.value = String(item?.priority ?? 100);
+    currentSourceTimeoutInput.value = String(item?.timeout_seconds ?? 15);
+    currentSourceEnabledInput.checked = Boolean(item?.enabled);
     syncSourceTypeUI("current");
 }
 
-async function editSource(kind, name) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
+function findSource(kind, name) {
+    const list = kind === "desired" ? currentDesiredSources : currentCurrentSources;
+    return list.find((item) => item.name === name) || null;
+}
 
+async function getSourceByName(kind, name) {
+    const path =
+        kind === "desired"
+            ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
+            : `/api/v1/sources/current/${encodeURIComponent(name)}`;
+
+    return apiFetch(path);
+}
+
+async function editSource(kind, name) {
+    clearMessage();
+
+    try {
+        let item = findSource(kind, name);
+        if (!item) {
+            item = await getSourceByName(kind, name);
+        }
+
+        if (!item) {
+            showMessage(`未找到 source：${name}`, true);
+            return;
+        }
+
+        if (kind === "desired") {
+            fillDesiredSourceForm(item);
+        } else {
+            fillCurrentSourceForm(item);
+        }
+
+        setActiveSection("sources-section");
+        showMessage(`已加载 ${name} 到 ${kind} source 编辑表单。`);
+    } catch (error) {
+        showMessage(`加载 source 详情失败：${error.message}`, true);
+    }
+}
+
+async function toggleSourceEnabled(kind, name) {
+    const item = findSource(kind, name);
     if (!item) {
         showMessage(`未找到 source：${name}`, true);
         return;
     }
 
-    if (kind === "desired") {
-        fillDesiredSourceForm(item);
-    } else {
-        fillCurrentSourceForm(item);
-    }
-
-    setActiveSection("sources-section");
-    showMessage(`已加载 ${name} 到 ${kind} source 编辑表单。`);
-}
-
-async function testSavedSource(kind, name) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
-
-    if (!item) {
-        showMessage(`未找到已保存 source：${name}`, true);
-        return;
-    }
-
-    clearMessage();
-
-    try {
-        await runSourceProbe(item, kind, name);
-        showMessage(`已对已保存 ${kind} source 执行测试：${name}`);
-    } catch (error) {
-        showMessage(`测试已保存 source 失败：${error.message}`, true);
-    }
-}
-
-async function toggleSavedSourceEnabled(kind, name) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
-
-    if (!item) {
-        showMessage(`未找到要切换启停的 source：${name}`, true);
-        return;
-    }
-
-    const nextEnabled = !Boolean(item.enabled);
-    const actionText = nextEnabled ? "启用" : "停用";
-
-    clearMessage();
-
     const payload = {
-        name: item.name,
-        type: item.type,
-        path: item.path,
-        url: item.url,
-        headers: item.headers,
-        timeout_seconds: item.timeout_seconds,
-        enabled: nextEnabled,
-        priority: item.priority
+        ...item,
+        enabled: !item.enabled,
     };
-
-    try {
-        if (kind === "desired") {
-            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadDesiredSources();
-        } else {
-            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadCurrentSources();
-        }
-
-        await loadConfig();
-
-        showMessage(`已${actionText} ${kind} source：${name}`);
-    } catch (error) {
-        showMessage(`切换 source 启停失败：${error.message}`, true);
-    }
-}
-
-async function adjustSavedSourcePriority(kind, name, delta) {
-    const item =
-        kind === "desired" ? findDesiredSourceByName(name) : findCurrentSourceByName(name);
-
-    if (!item) {
-        showMessage(`未找到要调整优先级的 source：${name}`, true);
-        return;
-    }
-
-    const currentPriority = Number(item.priority ?? 0);
-    const nextPriority = Math.max(0, currentPriority + delta);
-
-    if (nextPriority === currentPriority) {
-        showMessage(`source：${name} 的优先级已是最小值 0`);
-        return;
-    }
-
-    clearMessage();
-
-    const payload = {
-        name: item.name,
-        type: item.type,
-        path: item.path,
-        url: item.url,
-        headers: item.headers,
-        timeout_seconds: item.timeout_seconds,
-        enabled: Boolean(item.enabled),
-        priority: nextPriority
-    };
-
-    try {
-        if (kind === "desired") {
-            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadDesiredSources();
-        } else {
-            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(name)}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-            await loadCurrentSources();
-        }
-
-        await loadConfig();
-
-        const actionText = delta > 0 ? `+${delta}` : `${delta}`;
-        showMessage(`已调整 ${kind} source：${name} 的优先级 ${actionText}，当前为 ${nextPriority}`);
-    } catch (error) {
-        showMessage(`调整 source 优先级失败：${error.message}`, true);
-    }
-}
-
-async function deleteSource(kind, name) {
-    const ok = window.confirm(`确定删除 ${kind} source "${name}" 吗？`);
-    if (!ok) return;
-
-    clearMessage();
 
     const path =
         kind === "desired"
             ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
             : `/api/v1/sources/current/${encodeURIComponent(name)}`;
 
+    clearMessage();
+
     try {
-        await apiFetch(path, { method: "DELETE" });
+        await apiFetch(path, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+        });
 
-        if (kind === "desired" && editingDesiredSourceName === name) {
-            resetDesiredSourceForm();
+        if (kind === "desired") {
+            await loadDesiredSources();
+        } else {
+            await loadCurrentSources();
         }
-        if (kind === "current" && editingCurrentSourceName === name) {
-            resetCurrentSourceForm();
-        }
-
-        await loadDesiredSources();
-        await loadCurrentSources();
         await loadConfig();
 
-        showMessage(`已删除 ${kind} source：${name}`);
+        showMessage(
+            `已${payload.enabled ? "启用" : "停用"} source：${name}`
+        );
+    } catch (error) {
+        showMessage(`切换 source 状态失败：${error.message}`, true);
+    }
+}
+
+async function deleteSource(kind, name) {
+    const ok = window.confirm(`确定删除 source "${name}" 吗？`);
+    if (!ok) return;
+
+    const path =
+        kind === "desired"
+            ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
+            : `/api/v1/sources/current/${encodeURIComponent(name)}`;
+
+    clearMessage();
+
+    try {
+        await apiFetch(path, {
+            method: "DELETE",
+        });
+
+        if (kind === "desired") {
+            if (editingDesiredSourceName === name) resetDesiredSourceForm();
+            await loadDesiredSources();
+        } else {
+            if (editingCurrentSourceName === name) resetCurrentSourceForm();
+            await loadCurrentSources();
+        }
+
+        await loadConfig();
+        showMessage(`已删除 source：${name}`);
     } catch (error) {
         showMessage(`删除 source 失败：${error.message}`, true);
     }
 }
 
-function syncSourceTypeUI(kind) {
-    const isDesired = kind === "desired";
-
-    const typeSelect = isDesired ? desiredSourceTypeSelect : currentSourceTypeSelect;
-    const pathInput = isDesired ? desiredSourcePathInput : currentSourcePathInput;
-    const urlInput = isDesired ? desiredSourceURLInput : currentSourceURLInput;
-    const pathHelp = isDesired ? desiredSourcePathHelp : currentSourcePathHelp;
-    const urlHelp = isDesired ? desiredSourceURLHelp : currentSourceURLHelp;
-
-    const currentType = typeSelect.value;
-
-    if (currentType === "file") {
-        pathInput.disabled = false;
-        urlInput.disabled = true;
-
-        pathInput.placeholder = "./data/source.json";
-        urlInput.placeholder = "当前 file 模式下无需填写 URL";
-
-        pathHelp.textContent = "当前为 file 模式，请填写本地路径。";
-        pathHelp.classList.remove("field-help-muted");
-
-        urlHelp.textContent = "当前 file 模式下 URL 输入已禁用；Headers 通常也不需要。";
-        urlHelp.classList.add("field-help-muted");
-        return;
-    }
-
-    pathInput.disabled = true;
-    urlInput.disabled = false;
-
-    pathInput.placeholder = "当前 url 模式下无需填写 Path";
-    urlInput.placeholder = "https://example.com/source.json";
-
-    pathHelp.textContent = "当前 url 模式下 Path 输入已禁用。";
-    pathHelp.classList.add("field-help-muted");
-
-    urlHelp.textContent = "当前为 url 模式，请填写远程地址；如需鉴权可额外填写 Headers。";
-    urlHelp.classList.remove("field-help-muted");
+function buildSourcePayloadFromDesiredForm() {
+    return {
+        name: desiredSourceNameInput.value.trim(),
+        type: desiredSourceTypeSelect.value,
+        path: desiredSourcePathInput.value.trim(),
+        url: desiredSourceURLInput.value.trim(),
+        headers: parseHeadersText(desiredSourceHeadersInput.value),
+        priority: Number(desiredSourcePriorityInput.value || 0),
+        timeout_seconds: Number(desiredSourceTimeoutInput.value || 15),
+        enabled: Boolean(desiredSourceEnabledInput.checked),
+    };
 }
 
-function buildSourcePayload(kind) {
-    const isDesired = kind === "desired";
-
-    const name = isDesired ? desiredSourceNameInput.value.trim() : currentSourceNameInput.value.trim();
-    const type = isDesired ? desiredSourceTypeSelect.value : currentSourceTypeSelect.value;
-    const path = isDesired ? desiredSourcePathInput.value.trim() : currentSourcePathInput.value.trim();
-    const url = isDesired ? desiredSourceURLInput.value.trim() : currentSourceURLInput.value.trim();
-    const headersText = isDesired
-        ? desiredSourceHeadersInput.value
-        : currentSourceHeadersInput.value;
-
-    const priority = Number(
-        isDesired ? desiredSourcePriorityInput.value || 0 : currentSourcePriorityInput.value || 0
-    );
-    const timeoutSeconds = Number(
-        isDesired ? desiredSourceTimeoutInput.value || 0 : currentSourceTimeoutInput.value || 0
-    );
-    const enabled = isDesired ? desiredSourceEnabledInput.checked : currentSourceEnabledInput.checked;
-
-    const headers = parseHeadersText(headersText);
-
+function buildSourcePayloadFromCurrentForm() {
     return {
-        name,
-        type,
-        path: type === "file" ? path || undefined : undefined,
-        url: type === "url" ? url || undefined : undefined,
-        headers: Object.keys(headers).length > 0 ? headers : undefined,
-        timeout_seconds: timeoutSeconds,
-        enabled,
-        priority
+        name: currentSourceNameInput.value.trim(),
+        type: currentSourceTypeSelect.value,
+        path: currentSourcePathInput.value.trim(),
+        url: currentSourceURLInput.value.trim(),
+        headers: parseHeadersText(currentSourceHeadersInput.value),
+        priority: Number(currentSourcePriorityInput.value || 0),
+        timeout_seconds: Number(currentSourceTimeoutInput.value || 15),
+        enabled: Boolean(currentSourceEnabledInput.checked),
     };
 }
 
@@ -1078,606 +1013,569 @@ async function submitDesiredSourceForm(event) {
     event.preventDefault();
     clearMessage();
 
-    const payload = buildSourcePayload("desired");
-    await saveSourcePayload("desired", payload, false);
+    let payload;
+    try {
+        payload = buildSourcePayloadFromDesiredForm();
+    } catch (error) {
+        showMessage(`Desired Source Headers 解析失败：${error.message}`, true);
+        return;
+    }
+
+    if (!payload.name) {
+        showMessage("Desired Source Name 不能为空。", true);
+        return;
+    }
+
+    if (payload.type === "file" && !payload.path) {
+        showMessage("type=file 时 Path 不能为空。", true);
+        return;
+    }
+
+    if (payload.type === "url" && !payload.url) {
+        showMessage("type=url 时 URL 不能为空。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.priority)) {
+        showMessage("Priority 必须是数字。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
+        showMessage("Timeout Seconds 必须是大于 0 的数字。", true);
+        return;
+    }
+
+    try {
+        if (editingDesiredSourceName) {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(editingDesiredSourceName)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload),
+            });
+            showMessage(`已更新 Desired Source：${editingDesiredSourceName}`);
+        } else {
+            await apiFetch("/api/v1/sources/desired", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            showMessage(`已新增 Desired Source：${payload.name}`);
+        }
+
+        await loadDesiredSources();
+        await loadConfig();
+        editingDesiredSourceName = payload.name;
+    } catch (error) {
+        showMessage(`保存 Desired Source 失败：${error.message}`, true);
+    }
 }
 
 async function submitCurrentSourceForm(event) {
     event.preventDefault();
     clearMessage();
 
-    const payload = buildSourcePayload("current");
-    await saveSourcePayload("current", payload, false);
-}
+    let payload;
+    try {
+        payload = buildSourcePayloadFromCurrentForm();
+    } catch (error) {
+        showMessage(`Current Source Headers 解析失败：${error.message}`, true);
+        return;
+    }
 
-async function saveSourcePayload(kind, payload, fromProbe) {
     if (!payload.name) {
-        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Name 不能为空。`, true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.priority) || payload.priority < 0) {
-        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Priority 必须是大于等于 0 的数字。`, true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
-        showMessage(`${kind === "desired" ? "Desired" : "Current"} Source Timeout Seconds 必须大于 0。`, true);
+        showMessage("Current Source Name 不能为空。", true);
         return;
     }
 
     if (payload.type === "file" && !payload.path) {
-        showMessage("file 类型 source 必须填写 path。", true);
+        showMessage("type=file 时 Path 不能为空。", true);
         return;
     }
 
     if (payload.type === "url" && !payload.url) {
-        showMessage("url 类型 source 必须填写 url。", true);
+        showMessage("type=url 时 URL 不能为空。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.priority)) {
+        showMessage("Priority 必须是数字。", true);
+        return;
+    }
+
+    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
+        showMessage("Timeout Seconds 必须是大于 0 的数字。", true);
         return;
     }
 
     try {
-        if (kind === "desired") {
-            if (editingDesiredSourceName && editingDesiredSourceName === payload.name) {
-                await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(payload.name)}`, {
-                    method: "PUT",
-                    body: JSON.stringify(payload)
-                });
-            } else {
-                await apiFetch("/api/v1/sources/desired", {
-                    method: "POST",
-                    body: JSON.stringify(payload)
-                });
-            }
-
-            await loadDesiredSources();
-            editingDesiredSourceName = payload.name;
+        if (editingCurrentSourceName) {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(editingCurrentSourceName)}`, {
+                method: "PUT",
+                body: JSON.stringify(payload),
+            });
+            showMessage(`已更新 Current Source：${editingCurrentSourceName}`);
         } else {
-            if (editingCurrentSourceName && editingCurrentSourceName === payload.name) {
-                await apiFetch(`/api/v1/sources/current/${encodeURIComponent(payload.name)}`, {
-                    method: "PUT",
-                    body: JSON.stringify(payload)
-                });
-            } else {
-                await apiFetch("/api/v1/sources/current", {
-                    method: "POST",
-                    body: JSON.stringify(payload)
-                });
-            }
-
-            await loadCurrentSources();
-            editingCurrentSourceName = payload.name;
+            await apiFetch("/api/v1/sources/current", {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            showMessage(`已新增 Current Source：${payload.name}`);
         }
 
+        await loadCurrentSources();
         await loadConfig();
-
-        showMessage(
-            fromProbe
-                ? `已一键保存本次测试参数到 ${kind} source：${payload.name}`
-                : `已保存 ${kind} source：${payload.name}`
-        );
+        editingCurrentSourceName = payload.name;
     } catch (error) {
-        showMessage(`保存 source 失败：${error.message}`, true);
+        showMessage(`保存 Current Source 失败：${error.message}`, true);
     }
 }
 
-function clearSourceProbeResult() {
+// Source Probe
+function setSourceProbeLoading(kind, payload) {
+    lastProbeKind = kind;
+    lastProbePayload = payload;
+    lastProbeSourceName = payload?.name || "";
+    lastProbeResult = null;
+
+    setCompactValue(sourceProbeStatusEl, "测试中...");
+    setCompactValue(sourceProbeNameEl, payload?.name || "-");
+    setCompactValue(
+        sourceProbeLocationEl,
+        payload?.type === "file" ? (payload?.path || "-") : (payload?.url || "-")
+    );
+    setCompactValue(sourceProbeHTTPStatusEl, "-");
+    setCompactValue(sourceProbeContentTypeEl, "-");
+    setCompactValue(sourceProbeBodyBytesEl, "-");
+    setCompactValue(sourceProbeHeadersCountEl, "-");
+    setCompactValue(sourceProbeDurationEl, "-");
+
+    setCompactValue(sourceProbeDetectedFormatEl, "-");
+    setCompactValue(sourceProbeFormatDetailEl, "-");
+
+    setCompactValue(sourceProbeJSONValidEl, "-");
+    setCompactValue(sourceProbeJSONTypeEl, "-");
+    setCompactValue(sourceProbeListCountEl, "-");
+    setCompactValue(sourceProbeEntryCountEl, "-");
+
+    setCompactValue(sourceProbeTextLineCountEl, "-");
+    setCompactValue(sourceProbeTextValidLineCountEl, "-");
+    setCompactValue(sourceProbeTextInvalidLineCountEl, "-");
+
+    setPreBlock(sourceProbeErrorEl, "测试进行中...");
+    setPreBlock(sourceProbeListNamesEl, "");
+    setPreBlock(sourceProbeResponseHeadersEl, "");
+    setPreBlock(sourceProbeRawPreviewEl, "");
+}
+
+function clearSourceProbeResultView() {
     lastProbeKind = "";
     lastProbePayload = null;
     lastProbeSourceName = "";
-    btnSaveProbedSource.disabled = true;
+    lastProbeResult = null;
 
-    sourceProbeStatusEl.textContent = "-";
-    sourceProbeStatusEl.classList.remove("status-ok", "status-fail");
+    setCompactValue(sourceProbeStatusEl, "-");
+    setCompactValue(sourceProbeNameEl, "-");
+    setCompactValue(sourceProbeLocationEl, "-");
+    setCompactValue(sourceProbeHTTPStatusEl, "-");
+    setCompactValue(sourceProbeContentTypeEl, "-");
+    setCompactValue(sourceProbeBodyBytesEl, "-");
+    setCompactValue(sourceProbeHeadersCountEl, "-");
+    setCompactValue(sourceProbeDurationEl, "-");
 
-    sourceProbeNameEl.textContent = "-";
-    sourceProbeLocationEl.textContent = "-";
-    sourceProbeHTTPStatusEl.textContent = "-";
-    sourceProbeContentTypeEl.textContent = "-";
-    sourceProbeBodyBytesEl.textContent = "-";
-    sourceProbeJSONValidEl.textContent = "-";
-    sourceProbeJSONTypeEl.textContent = "-";
-    sourceProbeListCountEl.textContent = "-";
-    sourceProbeEntryCountEl.textContent = "-";
-    sourceProbeHeadersCountEl.textContent = "-";
-    sourceProbeDurationEl.textContent = "-";
+    setCompactValue(sourceProbeDetectedFormatEl, "-");
+    setCompactValue(sourceProbeFormatDetailEl, "-");
 
-    sourceProbeErrorEl.textContent = "尚未执行测试";
-    sourceProbeErrorEl.classList.add("empty-viewer");
+    setCompactValue(sourceProbeJSONValidEl, "-");
+    setCompactValue(sourceProbeJSONTypeEl, "-");
+    setCompactValue(sourceProbeListCountEl, "-");
+    setCompactValue(sourceProbeEntryCountEl, "-");
 
-    sourceProbeListNamesEl.textContent = "尚未执行测试";
-    sourceProbeListNamesEl.classList.add("empty-viewer");
+    setCompactValue(sourceProbeTextLineCountEl, "-");
+    setCompactValue(sourceProbeTextValidLineCountEl, "-");
+    setCompactValue(sourceProbeTextInvalidLineCountEl, "-");
 
-    sourceProbeResponseHeadersEl.textContent = "尚未执行测试";
-    sourceProbeResponseHeadersEl.classList.add("empty-viewer");
-
-    sourceProbeRawPreviewEl.textContent = "尚未执行测试";
-    sourceProbeRawPreviewEl.classList.add("empty-viewer");
+    setPreBlock(sourceProbeErrorEl, "尚未执行测试");
+    setPreBlock(sourceProbeListNamesEl, "尚未执行测试");
+    setPreBlock(sourceProbeResponseHeadersEl, "尚未执行测试");
+    setPreBlock(sourceProbeRawPreviewEl, "尚未执行测试");
 }
 
 function renderSourceProbeResult(result) {
-    sourceProbeStatusEl.textContent = result.ok ? "成功" : "失败";
-    sourceProbeStatusEl.classList.toggle("status-ok", Boolean(result.ok));
-    sourceProbeStatusEl.classList.toggle("status-fail", !result.ok);
+    lastProbeResult = result || null;
 
-    sourceProbeNameEl.textContent = result.name || "-";
-    sourceProbeLocationEl.textContent = result.location || "-";
-    sourceProbeHTTPStatusEl.textContent = result.status_text || "-";
-    sourceProbeContentTypeEl.textContent = result.content_type || "-";
-    sourceProbeBodyBytesEl.textContent = String(result.body_bytes ?? 0);
-    sourceProbeJSONValidEl.textContent = result.json_valid ? "true" : "false";
-    sourceProbeJSONTypeEl.textContent = result.json_type || "-";
-    sourceProbeListCountEl.textContent = String(result.detected_list_count ?? 0);
-    sourceProbeEntryCountEl.textContent = String(result.detected_entry_count ?? 0);
-    sourceProbeHeadersCountEl.textContent = String(result.headers_count ?? 0);
-    sourceProbeDurationEl.textContent = `${result.duration_ms ?? 0} ms`;
+    setCompactValue(sourceProbeStatusEl, result?.ok ? "成功" : "失败");
+    setCompactValue(sourceProbeNameEl, result?.name || "-");
+    setCompactValue(sourceProbeLocationEl, result?.location || "-");
+    setCompactValue(sourceProbeHTTPStatusEl, result?.status_text || "-");
+    setCompactValue(sourceProbeContentTypeEl, result?.content_type || "-");
+    setCompactValue(sourceProbeBodyBytesEl, result?.body_bytes ?? 0);
+    setCompactValue(sourceProbeHeadersCountEl, result?.headers_count ?? 0);
+    setCompactValue(sourceProbeDurationEl, `${result?.duration_ms ?? 0} ms`);
 
-    const warnings = Array.isArray(result.warnings) ? result.warnings : [];
-    const errorParts = [];
-    if (result.error) {
-        errorParts.push(`错误：${result.error}`);
-    }
-    if (warnings.length > 0) {
-        errorParts.push(`警告：\n- ${warnings.join("\n- ")}`);
-    }
+    setCompactValue(sourceProbeDetectedFormatEl, result?.detected_format || "-");
+    setCompactValue(sourceProbeFormatDetailEl, result?.format_detail || "-");
 
-    sourceProbeErrorEl.textContent = errorParts.length > 0 ? errorParts.join("\n\n") : "无";
-    sourceProbeErrorEl.classList.toggle("empty-viewer", errorParts.length === 0);
+    setCompactValue(sourceProbeJSONValidEl, String(Boolean(result?.json_valid)));
+    setCompactValue(sourceProbeJSONTypeEl, result?.json_type || "-");
 
-    const listNames = Array.isArray(result.list_names) ? result.list_names : [];
-    sourceProbeListNamesEl.textContent = listNames.length > 0 ? listNames.join("\n") : "未检测到 list 名称";
-    sourceProbeListNamesEl.classList.toggle("empty-viewer", listNames.length === 0);
+    setCompactValue(sourceProbeListCountEl, result?.detected_list_count ?? 0);
+    setCompactValue(sourceProbeEntryCountEl, result?.detected_entry_count ?? 0);
 
-    const responseHeaders = result.response_headers
-        ? JSON.stringify(result.response_headers, null, 2)
-        : "无响应头（可能是 file 来源或服务未返回）";
-    sourceProbeResponseHeadersEl.textContent = responseHeaders;
-    sourceProbeResponseHeadersEl.classList.toggle("empty-viewer", !result.response_headers);
+    setCompactValue(sourceProbeTextLineCountEl, result?.text_line_count ?? 0);
+    setCompactValue(sourceProbeTextValidLineCountEl, result?.text_valid_line_count ?? 0);
+    setCompactValue(sourceProbeTextInvalidLineCountEl, result?.text_invalid_line_count ?? 0);
 
-    const rawPreview = result.raw_preview || "无可预览内容";
-    sourceProbeRawPreviewEl.textContent = rawPreview;
-    sourceProbeRawPreviewEl.classList.toggle("empty-viewer", !result.raw_preview);
+    const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+    const errorText = result?.error
+        ? [result.error, ...warnings].join("\n\n")
+        : warnings.join("\n") || "无";
+    setPreBlock(sourceProbeErrorEl, errorText, "无");
+
+    const listNames = Array.isArray(result?.list_names) ? result.list_names : [];
+    setPreBlock(sourceProbeListNamesEl, listNames.length ? listNames.join("\n") : "-", "-");
+
+    setPreBlock(
+        sourceProbeResponseHeadersEl,
+        safeJSONStringify(result?.response_headers || {}),
+        "{}"
+    );
+
+    setPreBlock(sourceProbeRawPreviewEl, result?.raw_preview || "", "空响应");
 }
 
-async function runSourceProbe(payload, kind, sourceName = "") {
-    const result = await apiFetch("/api/v1/sources/test", {
-        method: "POST",
-        body: JSON.stringify(payload)
-    });
-
-    renderSourceProbeResult(result);
-    lastProbeKind = kind;
-    lastProbePayload = payload;
-    lastProbeSourceName = sourceName || payload.name || "";
-    btnSaveProbedSource.disabled = false;
-
-    if (result.ok) {
-        showMessage("Source 测试成功。");
-    } else {
-        showMessage(`Source 测试失败：${result.error || "请查看测试结果区域"}`, true);
-    }
-}
-
-async function testDesiredSource() {
+async function testSourceWithPayload(kind, payload) {
     clearMessage();
 
-    try {
-        const payload = buildSourcePayload("desired");
-        if (!payload.type) {
-            showMessage("Desired Source Type 不能为空。", true);
-            return;
-        }
-
-        if (payload.type === "file" && !payload.path) {
-            showMessage("file 类型 source 必须填写 path。", true);
-            return;
-        }
-
-        if (payload.type === "url" && !payload.url) {
-            showMessage("url 类型 source 必须填写 url。", true);
-            return;
-        }
-
-        await runSourceProbe(payload, "desired", payload.name || "");
-    } catch (error) {
-        showMessage(`测试 Desired Source 失败：${error.message}`, true);
-    }
-}
-
-async function testCurrentSource() {
-    clearMessage();
-
-    try {
-        const payload = buildSourcePayload("current");
-        if (!payload.type) {
-            showMessage("Current Source Type 不能为空。", true);
-            return;
-        }
-
-        if (payload.type === "file" && !payload.path) {
-            showMessage("file 类型 source 必须填写 path。", true);
-            return;
-        }
-
-        if (payload.type === "url" && !payload.url) {
-            showMessage("url 类型 source 必须填写 url。", true);
-            return;
-        }
-
-        await runSourceProbe(payload, "current", payload.name || "");
-    } catch (error) {
-        showMessage(`测试 Current Source 失败：${error.message}`, true);
-    }
-}
-
-async function saveProbedSource() {
-    if (!lastProbeKind || !lastProbePayload) {
-        showMessage("当前没有可保存的测试参数。", true);
+    if (!payload.name) {
+        showMessage("Source Name 不能为空。", true);
         return;
     }
 
-    await saveSourcePayload(lastProbeKind, lastProbePayload, true);
+    if (payload.type === "file" && !payload.path) {
+        showMessage("type=file 时 Path 不能为空。", true);
+        return;
+    }
+
+    if (payload.type === "url" && !payload.url) {
+        showMessage("type=url 时 URL 不能为空。", true);
+        return;
+    }
+
+    setSourceProbeLoading(kind, payload);
+
+    try {
+        const result = await apiFetch("/api/v1/sources/test", {
+            method: "POST",
+            body: JSON.stringify(payload),
+        });
+
+        renderSourceProbeResult(result);
+
+        const fmt = result?.detected_format || "unknown";
+        showMessage(`Source 测试完成：${payload.name}（检测格式：${fmt}）`);
+    } catch (error) {
+        renderSourceProbeResult({
+            ok: false,
+            name: payload.name,
+            location: payload.type === "file" ? payload.path : payload.url,
+            error: error.message,
+        });
+        showMessage(`Source 测试失败：${error.message}`, true);
+    }
 }
 
-function bindListTableActions() {
-    listsTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
+async function saveLastProbedSource() {
+    clearMessage();
 
-        const action = target.dataset.action;
-        const encodedName = target.dataset.name;
-        if (!action || !encodedName) return;
+    if (!lastProbePayload || !lastProbeKind) {
+        showMessage("当前没有可保存的测试参数，请先执行一次 Source 测试。", true);
+        return;
+    }
 
-        const name = decodeURIComponent(encodedName);
+    const payload = { ...lastProbePayload };
 
-        if (action === "edit-list") {
-            await editList(name);
-            return;
+    const path =
+        lastProbeKind === "desired"
+            ? "/api/v1/sources/desired"
+            : "/api/v1/sources/current";
+
+    try {
+        await apiFetch(path, {
+            method: "POST",
+            body: JSON.stringify(payload),
+        });
+
+        if (lastProbeKind === "desired") {
+            await loadDesiredSources();
+        } else {
+            await loadCurrentSources();
         }
+        await loadConfig();
 
-        if (action === "desc-list") {
-            await editList(name);
-            descTargetNameInput.value = name;
-            setActiveSection("lists-section");
-            return;
-        }
-
-        if (action === "delete-list") {
-            await deleteList(name);
-        }
-    });
+        showMessage(`已保存本次测试参数到 ${lastProbeKind} sources：${payload.name}`);
+    } catch (error) {
+        showMessage(`保存测试参数失败：${error.message}`, true);
+    }
 }
 
-function bindRuleTableActions() {
-    rulesTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const action = target.dataset.action;
-        const encodedId = target.dataset.id;
-        if (!action || !encodedId) return;
-
-        const id = decodeURIComponent(encodedId);
-
-        if (action === "edit-rule") {
-            await editRule(id);
-            return;
-        }
-
-        if (action === "delete-rule") {
-            await deleteRule(id);
-        }
-    });
-}
-
-function bindSourceTableActions() {
-    desiredSourcesTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const action = target.dataset.action;
-        const kind = target.dataset.kind;
-        const encodedName = target.dataset.name;
-        if (!action || !kind || !encodedName) return;
-
-        const name = decodeURIComponent(encodedName);
-
-        if (action === "edit-source") {
-            await editSource(kind, name);
-            return;
-        }
-
-        if (action === "copy-source") {
-            copySavedSourceToForm(kind, name);
-            return;
-        }
-
-        if (action === "test-source") {
-            await testSavedSource(kind, name);
-            return;
-        }
-
-        if (action === "toggle-source-enabled") {
-            await toggleSavedSourceEnabled(kind, name);
-            return;
-        }
-
-        if (action === "decrease-source-priority") {
-            await adjustSavedSourcePriority(kind, name, -10);
-            return;
-        }
-
-        if (action === "increase-source-priority") {
-            await adjustSavedSourcePriority(kind, name, 10);
-            return;
-        }
-
-        if (action === "delete-source") {
-            await deleteSource(kind, name);
-        }
-    });
-
-    currentSourcesTableBody.addEventListener("click", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-
-        const action = target.dataset.action;
-        const kind = target.dataset.kind;
-        const encodedName = target.dataset.name;
-        if (!action || !kind || !encodedName) return;
-
-        const name = decodeURIComponent(encodedName);
-
-        if (action === "edit-source") {
-            await editSource(kind, name);
-            return;
-        }
-
-        if (action === "copy-source") {
-            copySavedSourceToForm(kind, name);
-            return;
-        }
-
-        if (action === "test-source") {
-            await testSavedSource(kind, name);
-            return;
-        }
-
-        if (action === "toggle-source-enabled") {
-            await toggleSavedSourceEnabled(kind, name);
-            return;
-        }
-
-        if (action === "decrease-source-priority") {
-            await adjustSavedSourcePriority(kind, name, -10);
-            return;
-        }
-
-        if (action === "increase-source-priority") {
-            await adjustSavedSourcePriority(kind, name, 10);
-            return;
-        }
-
-        if (action === "delete-source") {
-            await deleteSource(kind, name);
-        }
-    });
+// Render
+function clearRenderResultView() {
+    currentRenderResult = null;
+    setCompactValue(renderResultModeEl, "-");
+    setCompactValue(renderResultListCountEl, "-");
+    setCompactValue(renderResultEntryCountEl, "-");
+    setCompactValue(renderResultOutputPathEl, "-");
+    setPreBlock(renderScriptViewerEl, "尚未执行渲染");
 }
 
 function resetRenderForm() {
-    renderForm.reset();
+    if (renderForm) renderForm.reset();
     renderModeSelect.value = "";
-    renderOutputPathInput.value = "";
+    renderOutputPathInput.value = currentConfig?.output?.path || "";
 }
 
-function clearRenderResult() {
-    currentRenderResult = null;
-    renderResultModeEl.textContent = "-";
-    renderResultListCountEl.textContent = "-";
-    renderResultEntryCountEl.textContent = "-";
-    renderResultOutputPathEl.textContent = "-";
-    renderScriptViewerEl.textContent = "尚未执行渲染";
-    renderScriptViewerEl.classList.add("empty-viewer");
-}
-
-function renderRenderResult(result) {
-    currentRenderResult = result;
-    renderResultModeEl.textContent = String(result.mode ?? "-");
-    renderResultListCountEl.textContent = String(result.list_count ?? "-");
-    renderResultEntryCountEl.textContent = String(result.entry_count ?? "-");
-    renderResultOutputPathEl.textContent = String(result.output_path ?? "-");
-    renderScriptViewerEl.textContent = result.script || "";
-    renderScriptViewerEl.classList.remove("empty-viewer");
-}
-
-async function submitRenderForm(event) {
+async function executeRender(event) {
     event.preventDefault();
     clearMessage();
 
-    const mode = renderModeSelect.value;
-    const outputPath = renderOutputPathInput.value.trim();
-
-    const payload = {};
-    if (mode) {
-        payload.mode = mode;
-    }
-    if (outputPath) {
-        payload.output_path = outputPath;
-    }
+    const payload = {
+        mode: renderModeSelect.value || "",
+        output_path: renderOutputPathInput.value.trim(),
+    };
 
     try {
         const result = await apiFetch("/api/v1/render", {
             method: "POST",
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
         });
 
-        renderRenderResult(result);
-        showMessage("渲染执行成功。");
+        currentRenderResult = result;
+        setCompactValue(renderResultModeEl, result?.mode || "-");
+        setCompactValue(renderResultListCountEl, result?.list_count ?? 0);
+        setCompactValue(renderResultEntryCountEl, result?.entry_count ?? 0);
+        setCompactValue(renderResultOutputPathEl, result?.output_path || "-");
+        setPreBlock(renderScriptViewerEl, result?.script || "", "空脚本");
+
+        showMessage("渲染执行完成。");
     } catch (error) {
-        showMessage(`渲染执行失败：${error.message}`, true);
+        showMessage(`执行渲染失败：${error.message}`, true);
     }
 }
 
 async function copyRenderScript() {
-    const text = renderScriptViewerEl.textContent || "";
-    if (!text || text === "尚未执行渲染") {
+    clearMessage();
+
+    const script = currentRenderResult?.script || renderScriptViewerEl?.textContent || "";
+    if (!script || script === "尚未执行渲染") {
         showMessage("当前没有可复制的脚本。", true);
         return;
     }
 
     try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(script);
         showMessage("脚本已复制到剪贴板。");
     } catch (error) {
-        showMessage("复制失败，请手动复制。", true);
+        showMessage(`复制失败：${error.message}`, true);
     }
 }
 
-function escapeHTML(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
-
-btnCheckHealth.addEventListener("click", () => {
-    void checkHealth();
-});
-
-btnLoadConfig.addEventListener("click", () => {
-    void loadConfig().then(() => showMessage("配置加载成功。"));
-});
-
-btnLoadConfigInline.addEventListener("click", () => {
-    void loadConfig().then(() => {
-        setActiveSection("config-section");
-        showMessage("配置加载成功。");
+// Bindings
+navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        const sectionId = button.dataset.section;
+        if (sectionId) {
+            setActiveSection(sectionId);
+        }
     });
 });
 
-btnRefreshLists.addEventListener("click", () => {
-    clearMessage();
-    void loadLists().then(() => showMessage("Address Lists 已刷新。"));
-});
+if (btnCheckHealth) {
+    btnCheckHealth.onclick = checkHealth;
+}
 
-btnResetListForm.addEventListener("click", () => {
+if (btnLoadConfig) {
+    btnLoadConfig.onclick = async () => {
+        clearMessage();
+        await loadConfig();
+        showMessage("配置已重新加载。");
+    };
+}
+
+if (btnLoadConfigInline) {
+    btnLoadConfigInline.onclick = async () => {
+        clearMessage();
+        await loadConfig();
+        showMessage("配置已重新加载。");
+    };
+}
+
+if (btnRefreshLists) {
+    btnRefreshLists.onclick = async () => {
+        clearMessage();
+        await loadLists();
+        showMessage("列表已刷新。");
+    };
+}
+
+if (btnResetListForm) {
+    btnResetListForm.onclick = () => {
+        resetListForm();
+        clearMessage();
+    };
+}
+
+if (listForm) {
+    listForm.addEventListener("submit", submitListForm);
+}
+
+if (descriptionForm) {
+    descriptionForm.addEventListener("submit", submitDescriptionForm);
+}
+
+if (btnRefreshRules) {
+    btnRefreshRules.onclick = async () => {
+        clearMessage();
+        await loadRules();
+        showMessage("规则已刷新。");
+    };
+}
+
+if (btnResetRuleForm) {
+    btnResetRuleForm.onclick = () => {
+        resetRuleForm();
+        clearMessage();
+    };
+}
+
+if (ruleForm) {
+    ruleForm.addEventListener("submit", submitRuleForm);
+}
+
+if (btnRefreshDesiredSources) {
+    btnRefreshDesiredSources.onclick = async () => {
+        clearMessage();
+        await loadDesiredSources();
+        showMessage("Desired Sources 已刷新。");
+    };
+}
+
+if (btnRefreshCurrentSources) {
+    btnRefreshCurrentSources.onclick = async () => {
+        clearMessage();
+        await loadCurrentSources();
+        showMessage("Current Sources 已刷新。");
+    };
+}
+
+if (btnResetDesiredSourceForm) {
+    btnResetDesiredSourceForm.onclick = () => {
+        resetDesiredSourceForm();
+        clearMessage();
+    };
+}
+
+if (btnResetCurrentSourceForm) {
+    btnResetCurrentSourceForm.onclick = () => {
+        resetCurrentSourceForm();
+        clearMessage();
+    };
+}
+
+if (desiredSourceTypeSelect) {
+    desiredSourceTypeSelect.addEventListener("change", () => syncSourceTypeUI("desired"));
+}
+
+if (currentSourceTypeSelect) {
+    currentSourceTypeSelect.addEventListener("change", () => syncSourceTypeUI("current"));
+}
+
+if (desiredSourceForm) {
+    desiredSourceForm.addEventListener("submit", submitDesiredSourceForm);
+}
+
+if (currentSourceForm) {
+    currentSourceForm.addEventListener("submit", submitCurrentSourceForm);
+}
+
+if (btnTestDesiredSource) {
+    btnTestDesiredSource.onclick = async () => {
+        try {
+            const payload = buildSourcePayloadFromDesiredForm();
+            await testSourceWithPayload("desired", payload);
+        } catch (error) {
+            showMessage(`读取 Desired Source 表单失败：${error.message}`, true);
+        }
+    };
+}
+
+if (btnTestCurrentSource) {
+    btnTestCurrentSource.onclick = async () => {
+        try {
+            const payload = buildSourcePayloadFromCurrentForm();
+            await testSourceWithPayload("current", payload);
+        } catch (error) {
+            showMessage(`读取 Current Source 表单失败：${error.message}`, true);
+        }
+    };
+}
+
+if (btnSaveProbedSource) {
+    btnSaveProbedSource.onclick = async () => {
+        await saveLastProbedSource();
+    };
+}
+
+if (btnClearSourceProbeResult) {
+    btnClearSourceProbeResult.onclick = () => {
+        clearMessage();
+        clearSourceProbeResultView();
+    };
+}
+
+if (btnResetRenderForm) {
+    btnResetRenderForm.onclick = () => {
+        resetRenderForm();
+        clearMessage();
+    };
+}
+
+if (btnClearRenderResult) {
+    btnClearRenderResult.onclick = () => {
+        clearMessage();
+        clearRenderResultView();
+    };
+}
+
+if (btnCopyRenderScript) {
+    btnCopyRenderScript.onclick = copyRenderScript;
+}
+
+if (renderForm) {
+    renderForm.addEventListener("submit", executeRender);
+}
+
+// Init
+async function initializePage() {
+    clearMessage();
+    clearSourceProbeResultView();
+    clearRenderResultView();
+
     resetListForm();
-    showMessage("List 表单已重置。");
-});
-
-btnRefreshRules.addEventListener("click", () => {
-    clearMessage();
-    void loadRules().then(() => showMessage("Manual Rules 已刷新。"));
-});
-
-btnResetRuleForm.addEventListener("click", () => {
     resetRuleForm();
-    showMessage("Rule 表单已重置。");
-});
-
-btnRefreshDesiredSources.addEventListener("click", () => {
-    clearMessage();
-    void loadDesiredSources().then(() => showMessage("Desired Sources 已刷新。"));
-});
-
-btnResetDesiredSourceForm.addEventListener("click", () => {
     resetDesiredSourceForm();
-    showMessage("Desired Source 表单已重置。");
-});
-
-btnRefreshCurrentSources.addEventListener("click", () => {
-    clearMessage();
-    void loadCurrentSources().then(() => showMessage("Current Sources 已刷新。"));
-});
-
-btnResetCurrentSourceForm.addEventListener("click", () => {
     resetCurrentSourceForm();
-    showMessage("Current Source 表单已重置。");
-});
-
-btnTestDesiredSource.addEventListener("click", () => {
-    void testDesiredSource();
-});
-
-btnTestCurrentSource.addEventListener("click", () => {
-    void testCurrentSource();
-});
-
-btnSaveProbedSource.addEventListener("click", () => {
-    void saveProbedSource();
-});
-
-btnClearSourceProbeResult.addEventListener("click", () => {
-    clearSourceProbeResult();
-    showMessage("Source 测试结果已清空。");
-});
-
-desiredSourceTypeSelect.addEventListener("change", () => {
-    syncSourceTypeUI("desired");
-});
-
-currentSourceTypeSelect.addEventListener("change", () => {
-    syncSourceTypeUI("current");
-});
-
-btnResetRenderForm.addEventListener("click", () => {
     resetRenderForm();
-    showMessage("渲染参数已重置。");
-});
 
-btnClearRenderResult.addEventListener("click", () => {
-    clearRenderResult();
-    showMessage("渲染结果已清空。");
-});
-
-btnCopyRenderScript.addEventListener("click", () => {
-    void copyRenderScript();
-});
-
-listForm.addEventListener("submit", (event) => {
-    void submitListForm(event);
-});
-
-descriptionForm.addEventListener("submit", (event) => {
-    void submitDescriptionForm(event);
-});
-
-ruleForm.addEventListener("submit", (event) => {
-    void submitRuleForm(event);
-});
-
-desiredSourceForm.addEventListener("submit", (event) => {
-    void submitDesiredSourceForm(event);
-});
-
-currentSourceForm.addEventListener("submit", (event) => {
-    void submitCurrentSourceForm(event);
-});
-
-renderForm.addEventListener("submit", (event) => {
-    void submitRenderForm(event);
-});
-
-bindListTableActions();
-bindRuleTableActions();
-bindSourceTableActions();
-
-window.addEventListener("DOMContentLoaded", async () => {
     setActiveSection("dashboard-section");
-    resetListForm();
-    resetRuleForm();
-    resetDesiredSourceForm();
-    resetCurrentSourceForm();
-    resetRenderForm();
-    clearRenderResult();
-    clearSourceProbeResult();
 
-    await checkHealth();
-    await loadConfig();
-    await loadLists();
-    await loadRules();
-    await loadDesiredSources();
-    await loadCurrentSources();
+    await Promise.all([
+        loadConfig(),
+        loadLists(),
+        loadRules(),
+        loadDesiredSources(),
+        loadCurrentSources(),
+    ]);
+}
+
+initializePage().catch((error) => {
+    showMessage(`初始化页面失败：${error.message}`, true);
 });

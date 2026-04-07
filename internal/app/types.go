@@ -144,6 +144,23 @@ type SourceConfig struct {
 	// }
 	Headers map[string]string `json:"headers,omitempty"`
 
+	// Format 表示来源内容格式。
+	// 支持：
+	// - json
+	// - plain_cidr
+	Format string `json:"format,omitempty"`
+
+	// TargetListName 仅对 plain_cidr 有意义。
+	// 因为纯文本来源本身不带 list 名称，所以需要指定最终归属的 list。
+	TargetListName string `json:"target_list_name,omitempty"`
+
+	// TargetListFamily 仅对 plain_cidr 有意义。
+	TargetListFamily IPFamily `json:"target_list_family,omitempty"`
+
+	// LineCommentPrefixes 仅对 plain_cidr 有意义。
+	// 用来配置注释前缀，例如 #、//、;
+	LineCommentPrefixes []string `json:"line_comment_prefixes,omitempty"`
+
 	// Enabled 表示是否启用该来源。
 	Enabled bool `json:"enabled"`
 
