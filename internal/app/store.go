@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,14 +12,9 @@ import (
 
 // ConfigStore 用于统一管理应用配置的内存态与磁盘持久化。
 type ConfigStore struct {
-	// mu 用于保护 cfg 的并发访问。
-	mu sync.RWMutex
-
-	// path 表示配置文件在磁盘上的实际位置。
+	mu   sync.RWMutex
 	path string
-
-	// cfg 表示当前内存中的配置副本。
-	cfg AppConfig
+	cfg  AppConfig
 }
 
 // NewConfigStore 从配置文件创建一个新的 ConfigStore。
@@ -63,7 +59,7 @@ func (s *ConfigStore) Update(mutator func(*AppConfig) error) error {
 		return err
 	}
 
-	if err := saveConfigFileAtomic(s.path, next); err != nil {
+	if err := saveConfigFileSafely(s.path, next); err != nil {
 		return err
 	}
 
@@ -214,10 +210,6 @@ func (s *ConfigStore) DeleteCurrentSource(name string) error {
 	})
 }
 
-// upsertSourceSlice 在来源切片中执行“按名称新增或覆盖”。
-// 规则：
-// 1. 如果名称已存在，则原位覆盖
-// 2. 如果名称不存在，则追加到尾部
 func upsertSourceSlice(items []SourceConfig, src SourceConfig) []SourceConfig {
 	for i := range items {
 		if items[i].Name == src.Name {
@@ -229,10 +221,6 @@ func upsertSourceSlice(items []SourceConfig, src SourceConfig) []SourceConfig {
 	return append(items, src)
 }
 
-// deleteSourceSlice 从来源切片中按名称删除一个 source。
-// 返回值：
-// 1. 删除后的切片
-// 2. 是否找到
 func deleteSourceSlice(items []SourceConfig, name string) ([]SourceConfig, bool) {
 	found := false
 	var next []SourceConfig
@@ -259,13 +247,19 @@ func deepCopyConfig(cfg AppConfig) AppConfig {
 	return out
 }
 
-// saveConfigFileAtomic 以原子替换的方式保存配置文件。
-func saveConfigFileAtomic(path string, cfg AppConfig) error {
+// saveConfigFileSafely 将配置先写入随机临时文件，再尽量安全地替换目标文件。
+// 注意：
+// - 这里不再宣称“原子保存”，因为 Windows 上 os.Rename 覆盖已有文件并不可靠。
+// - 在替换前会先备份旧文件为 .bak。
+// - 临时文件名使用随机后缀，避免多个进程或异常中断时固定 .tmp 文件名互相冲突。
+func saveConfigFileSafely(path string, cfg AppConfig) (err error) {
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
+	} else {
+		dir = "."
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -273,10 +267,78 @@ func saveConfigFileAtomic(path string, cfg AppConfig) error {
 		return err
 	}
 
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+	tmpFile, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
 
-	return os.Rename(tmpPath, path)
+	tmpPath := tmpFile.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	if _, statErr := os.Stat(path); statErr == nil {
+		if err := copyFile(path, path+".bak"); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(statErr) {
+		return statErr
+	}
+
+	if err := os.Rename(tmpPath, path); err == nil {
+		renamed = true
+		return nil
+	}
+
+	if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+		return removeErr
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+
+	renamed = true
+	return nil
+}
+
+func copyFile(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	if err := os.Remove(dstPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+
+	return dst.Sync()
 }

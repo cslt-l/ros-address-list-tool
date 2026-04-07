@@ -1,44 +1,7 @@
 {
   "auto_create_lists": true,
   "log_file": "./logs/app.log",
-  "lists": [
-    {
-      "name": "toWanTelecom",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "电信出口地址列表"
-    },
-    {
-      "name": "toWanMobile",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "移动出口地址列表"
-    },
-    {
-      "name": "toWanUnicom",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "联通出口地址列表"
-    },
-    {
-      "name": "toWanGlobal",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "国际出口地址列表"
-    },
-    {
-      "name": "toPccBalance",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "PCC 均衡地址列表"
-    },
-    {
-      "name": "toWanIpv6",
-      "family": "ipv6",
-      "enabled": true,
-      "description": "IPv6 专用出口地址列表"
-    }
-  ],
+  "lists": null,
   "desired_sources": [
     {
       "name": "to-telecom-ipv4",
@@ -50,43 +13,7 @@
     }
   ],
   "current_state_sources": null,
-  "manual_rules": [
-    {
-      "id": "rule-telecom-add",
-      "list_name": "toWanTelecom",
-      "action": "add",
-      "priority": 1000,
-      "enabled": true,
-      "description": "手工强制加入电信地址",
-      "entries": [
-        "223.5.5.5",
-        "223.6.6.6"
-      ]
-    },
-    {
-      "id": "rule-global-remove",
-      "list_name": "toWanGlobal",
-      "action": "remove",
-      "priority": 2000,
-      "enabled": true,
-      "description": "手工强制移除某个全球地址",
-      "entries": [
-        "8.8.4.4"
-      ]
-    },
-    {
-      "id": "rule-ipv6-add",
-      "list_name": "toWanIpv6",
-      "action": "add",
-      "priority": 1000,
-      "enabled": true,
-      "description": "手工加入 IPv6 地址",
-      "entries": [
-        "2400:3200::1",
-        "2400:3200::/32"
-      ]
-    }
-  ],
+  "manual_rules": null,
   "output": {
     "path": "./output/routeros-address-list.rsc",
     "mode": "replace_all",

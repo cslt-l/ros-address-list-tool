@@ -2,12 +2,18 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 )
+
+const maxRequestBodyBytes int64 = 1 << 20 // 1 MiB
 
 // NewHTTPHandler 创建整个 HTTP API 与静态页面的根处理器。
 func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
@@ -30,7 +36,7 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 	mux.HandleFunc("/api/v1/manual-rules", s.handleManualRules)
 	mux.HandleFunc("/api/v1/manual-rules/", s.handleManualRuleByID)
 
-	// 新增：sources 管理接口
+	// sources 管理接口
 	mux.HandleFunc("/api/v1/sources/desired", s.handleDesiredSources)
 	mux.HandleFunc("/api/v1/sources/desired/", s.handleDesiredSourceByName)
 	mux.HandleFunc("/api/v1/sources/current", s.handleCurrentSources)
@@ -133,21 +139,8 @@ func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
 	cfg := s.store.GetConfig()
 
 	var req renderRequest
-
-	if r.Body != nil {
-		defer r.Body.Close()
-
-		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
-
-		if err := decoder.Decode(&req); err != nil {
-			if err.Error() != "EOF" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": "invalid request body: " + err.Error(),
-				})
-				return
-			}
-		}
+	if !decodeJSONBody(w, r, &req, true) {
+		return
 	}
 
 	if req.Mode != "" {
@@ -182,10 +175,7 @@ func (s *apiServer) handleLists(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var def ListDefinition
-		if err := json.NewDecoder(r.Body).Decode(&def); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &def, false) {
 			return
 		}
 
@@ -208,24 +198,15 @@ func (s *apiServer) handleLists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *apiServer) handleListByName(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/lists/")
-	if path == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "not found",
+	name, isDescription, status, errMsg := parseListRequestPath(r.URL.Path)
+	if status != 0 {
+		writeJSON(w, status, map[string]string{
+			"error": errMsg,
 		})
 		return
 	}
 
-	parts := strings.Split(path, "/")
-	name, err := url.PathUnescape(parts[0])
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "bad list name",
-		})
-		return
-	}
-
-	if len(parts) == 2 && parts[1] == "description" {
+	if isDescription {
 		s.handleListDescription(w, r, name)
 		return
 	}
@@ -245,10 +226,7 @@ func (s *apiServer) handleListByName(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPut:
 		var def ListDefinition
-		if err := json.NewDecoder(r.Body).Decode(&def); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &def, false) {
 			return
 		}
 
@@ -306,11 +284,7 @@ func (s *apiServer) handleListDescription(w http.ResponseWriter, r *http.Request
 		var body struct {
 			Description string `json:"description"`
 		}
-
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &body, false) {
 			return
 		}
 
@@ -340,10 +314,7 @@ func (s *apiServer) handleManualRules(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var rule ManualRule
-		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &rule, false) {
 			return
 		}
 
@@ -366,18 +337,10 @@ func (s *apiServer) handleManualRules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *apiServer) handleManualRuleByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/manual-rules/")
-	if id == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "not found",
-		})
-		return
-	}
-
-	id, err := url.PathUnescape(id)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "bad rule id",
+	id, status, errMsg := parseSinglePathValue(r.URL.Path, "/api/v1/manual-rules/", "rule id")
+	if status != 0 {
+		writeJSON(w, status, map[string]string{
+			"error": errMsg,
 		})
 		return
 	}
@@ -385,10 +348,7 @@ func (s *apiServer) handleManualRuleByID(w http.ResponseWriter, r *http.Request)
 	switch r.Method {
 	case http.MethodPut:
 		var rule ManualRule
-		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &rule, false) {
 			return
 		}
 
@@ -434,10 +394,7 @@ func (s *apiServer) handleDesiredSources(w http.ResponseWriter, r *http.Request)
 
 	case http.MethodPost:
 		var src SourceConfig
-		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &src, false) {
 			return
 		}
 
@@ -460,18 +417,10 @@ func (s *apiServer) handleDesiredSources(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *apiServer) handleDesiredSourceByName(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(r.URL.Path, "/api/v1/sources/desired/")
-	if name == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "not found",
-		})
-		return
-	}
-
-	name, err := url.PathUnescape(name)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "bad source name",
+	name, status, errMsg := parseSinglePathValue(r.URL.Path, "/api/v1/sources/desired/", "source name")
+	if status != 0 {
+		writeJSON(w, status, map[string]string{
+			"error": errMsg,
 		})
 		return
 	}
@@ -479,10 +428,7 @@ func (s *apiServer) handleDesiredSourceByName(w http.ResponseWriter, r *http.Req
 	switch r.Method {
 	case http.MethodPut:
 		var src SourceConfig
-		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &src, false) {
 			return
 		}
 
@@ -526,10 +472,7 @@ func (s *apiServer) handleCurrentSources(w http.ResponseWriter, r *http.Request)
 
 	case http.MethodPost:
 		var src SourceConfig
-		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &src, false) {
 			return
 		}
 
@@ -552,18 +495,10 @@ func (s *apiServer) handleCurrentSources(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(r.URL.Path, "/api/v1/sources/current/")
-	if name == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "not found",
-		})
-		return
-	}
-
-	name, err := url.PathUnescape(name)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "bad source name",
+	name, status, errMsg := parseSinglePathValue(r.URL.Path, "/api/v1/sources/current/", "source name")
+	if status != 0 {
+		writeJSON(w, status, map[string]string{
+			"error": errMsg,
 		})
 		return
 	}
@@ -571,10 +506,7 @@ func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Req
 	switch r.Method {
 	case http.MethodPut:
 		var src SourceConfig
-		if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "invalid request body: " + err.Error(),
-			})
+		if !decodeJSONBody(w, r, &src, false) {
 			return
 		}
 
@@ -618,15 +550,40 @@ func (s *apiServer) handleSourceTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var src SourceConfig
-	if err := json.NewDecoder(r.Body).Decode(&src); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "invalid request body: " + err.Error(),
+	if !isLoopbackRequest(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "source test 仅允许本机请求",
 		})
 		return
 	}
 
-	// 这里不落盘，只做即时测试。
+	var src SourceConfig
+	if !decodeJSONBody(w, r, &src, false) {
+		return
+	}
+
+	switch strings.TrimSpace(src.Type) {
+	case "file":
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "HTTP source test 不允许测试 file 类型来源",
+		})
+		return
+
+	case "url":
+		if err := validateProbeURL(src.URL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid source url: " + err.Error(),
+			})
+			return
+		}
+
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "source.type 只支持 file 或 url",
+		})
+		return
+	}
+
 	result := ProbeSource(src)
 	writeJSON(w, http.StatusOK, result)
 }
@@ -636,6 +593,114 @@ func loggingMiddleware(logger *log.Logger, next http.Handler) http.Handler {
 		logger.Printf("HTTP %s %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, allowEmpty bool) bool {
+	if r.Body == nil {
+		if allowEmpty {
+			return true
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "request body is required",
+		})
+		return false
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
+		if allowEmpty && errors.Is(err, io.EOF) {
+			return true
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid request body: " + err.Error(),
+		})
+		return false
+	}
+
+	var extra struct{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "request body must contain exactly one JSON object",
+		})
+		return false
+	}
+
+	return true
+}
+
+func parseListRequestPath(rawPath string) (name string, isDescription bool, status int, errMsg string) {
+	tail := strings.TrimPrefix(rawPath, "/api/v1/lists/")
+	if tail == "" {
+		return "", false, http.StatusNotFound, "not found"
+	}
+
+	parts := strings.Split(tail, "/")
+	switch {
+	case len(parts) == 1:
+		decoded, status, errMsg := decodePathValue(parts[0], "list name")
+		return decoded, false, status, errMsg
+
+	case len(parts) == 2 && parts[1] == "description":
+		decoded, status, errMsg := decodePathValue(parts[0], "list name")
+		return decoded, true, status, errMsg
+
+	default:
+		return "", false, http.StatusNotFound, "not found"
+	}
+}
+
+func parseSinglePathValue(rawPath, prefix, label string) (string, int, string) {
+	tail := strings.TrimPrefix(rawPath, prefix)
+	if tail == "" {
+		return "", http.StatusNotFound, "not found"
+	}
+	if strings.Contains(tail, "/") {
+		return "", http.StatusNotFound, "not found"
+	}
+	return decodePathValue(tail, label)
+}
+
+func decodePathValue(rawValue, label string) (string, int, string) {
+	value, err := url.PathUnescape(rawValue)
+	if err != nil {
+		return "", http.StatusBadRequest, "bad " + label
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", http.StatusNotFound, "not found"
+	}
+	if strings.Contains(value, "/") {
+		return "", http.StatusBadRequest, "bad " + label
+	}
+	return value, 0, ""
+}
+
+func validateProbeURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("只允许 http 或 https")
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return fmt.Errorf("url 缺少 host")
+	}
+	return nil
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
