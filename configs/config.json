@@ -169,8 +169,8 @@
     "auth_token": "signYourToken",
     "login_enabled": true,
     "login_username": "admin",
-    "login_password_hash": "pbkdf2-sha256$120000$362eac7b8a836db2b383fc518359a76c$317346774252b11499bf811758ac1c29314c5d5915b8149c840ae13e18ebe970",
-    "password_change_required": false,
+    "login_password": "password",
+    "password_change_required": true,
     "session_cookie_name": "ros_list_session",
     "session_ttl_minutes": 720
   }
