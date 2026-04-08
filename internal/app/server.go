@@ -42,6 +42,8 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 
 	mux.HandleFunc("/api/v1/config", s.wrap(s.handleConfig))
 	mux.HandleFunc("/api/v1/render", s.wrap(s.handleRender))
+	mux.HandleFunc("/api/v1/render/download", s.wrap(s.handleRenderDownload))
+	mux.HandleFunc("/api/v1/render/latest.rsc", s.wrap(s.handleRenderDownload))
 
 	mux.HandleFunc("/api/v1/lists", s.wrap(s.handleLists))
 	mux.HandleFunc("/api/v1/lists/", s.wrap(s.handleListByName))
@@ -73,6 +75,8 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 					"POST /api/v1/auth/change-password",
 					"GET  /api/v1/config",
 					"POST /api/v1/render",
+					"GET  /api/v1/render/download?access_token=...",
+					"GET  /api/v1/render/latest.rsc?access_token=...",
 
 					"GET  /api/v1/lists",
 					"POST /api/v1/lists",
@@ -217,6 +221,34 @@ func (s *apiServer) clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
+func (s *apiServer) isRenderDownloadPath(path string) bool {
+	switch path {
+	case "/api/v1/render/download", "/api/v1/render/latest.rsc":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *apiServer) isAuthorizedRenderDownloadRequest(r *http.Request, cfg AppConfig) bool {
+	if !s.isRenderDownloadPath(r.URL.Path) {
+		return false
+	}
+
+	token := strings.TrimSpace(cfg.Server.AuthToken)
+	if token == "" {
+		return false
+	}
+
+	queryToken := strings.TrimSpace(r.URL.Query().Get("access_token"))
+	if secureTokenEqual(queryToken, token) {
+		return true
+	}
+
+	queryToken = strings.TrimSpace(r.URL.Query().Get("token"))
+	return secureTokenEqual(queryToken, token)
+}
+
 func (s *apiServer) allowAnonymousRoute(path string) bool {
 	switch path {
 	case "/healthz", "/api/v1/auth/login", "/login", "/login.html":
@@ -243,6 +275,10 @@ func (s *apiServer) authorizeAPIRequest(w http.ResponseWriter, r *http.Request) 
 	cfg := s.store.GetConfig()
 
 	if strings.HasPrefix(r.URL.Path, "/api/") && isAuthorizedAPIRequest(r, strings.TrimSpace(cfg.Server.AuthToken)) {
+		return true
+	}
+
+	if s.isAuthorizedRenderDownloadRequest(r, cfg) {
 		return true
 	}
 
@@ -538,6 +574,34 @@ type renderRequest struct {
 	Mode RenderMode `json:"mode,omitempty"`
 }
 
+func renderModeFromQuery(raw string) RenderMode {
+	return RenderMode(strings.TrimSpace(raw))
+}
+
+func buildRenderFilename(result ExecuteResult) string {
+	if base := strings.TrimSpace(filepath.Base(result.OutputPath)); base != "" && base != "." && base != string(filepath.Separator) {
+		return base
+	}
+	return "routeros-address-list.rsc"
+}
+
+func writeScriptDownload(w http.ResponseWriter, result ExecuteResult) {
+	filename := buildRenderFilename(result)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
+	w.Header().Set("X-Render-Mode", string(result.Mode))
+	w.Header().Set("X-List-Count", fmt.Sprintf("%d", result.ListCount))
+	w.Header().Set("X-Entry-Count", fmt.Sprintf("%d", result.EntryCount))
+	_, _ = io.WriteString(w, result.Script)
+}
+
+func (s *apiServer) executeRender(cfg AppConfig, req renderRequest) (ExecuteResult, error) {
+	if req.Mode != "" {
+		cfg.Output.Mode = req.Mode
+	}
+	return Execute(cfg, s.logger)
+}
+
 func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
@@ -553,11 +617,7 @@ func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Mode != "" {
-		cfg.Output.Mode = req.Mode
-	}
-
-	result, err := Execute(cfg, s.logger)
+	result, err := s.executeRender(cfg, req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
@@ -572,6 +632,30 @@ func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
 		"output_path": result.OutputPath,
 		"script":      result.Script,
 	})
+}
+
+func (s *apiServer) handleRenderDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
+			"error": "method not allowed",
+		})
+		return
+	}
+
+	cfg := s.store.GetConfig()
+	req := renderRequest{
+		Mode: renderModeFromQuery(r.URL.Query().Get("mode")),
+	}
+
+	result, err := s.executeRender(cfg, req)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "# render failed\n# %s\n", err.Error())
+		return
+	}
+
+	writeScriptDownload(w, result)
 }
 
 func (s *apiServer) handleLists(w http.ResponseWriter, r *http.Request) {
