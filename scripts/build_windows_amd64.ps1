@@ -31,21 +31,20 @@ if (Test-Path $ZipPath) {
 New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "logs") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "output") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "web") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "web\src") | Out-Null
 
 Write-Host ""
-Write-Host "[1/6] Run tests..."
+Write-Host "[1/7] Run tests..."
 go test ./...
 if ($LASTEXITCODE -ne 0) {
     throw "go test failed. Build stopped."
 }
 
 Write-Host ""
-Write-Host "[2/6] Build Windows amd64 binary..."
+Write-Host "[2/7] Build Windows amd64 binary..."
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 $env:CGO_ENABLED = "0"
-
 $BinaryPath = Join-Path $PackageDir "ros-address-list-tool.exe"
 
 go build `
@@ -63,55 +62,60 @@ Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
 Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "[3/6] Copy config and docs..."
-
+Write-Host "[3/7] Copy config and docs..."
 Copy-Item (Join-Path $ProjectRoot "configs\config.json") (Join-Path $PackageDir "config.json") -Force
 Copy-Item (Join-Path $ProjectRoot "README.md") (Join-Path $PackageDir "README.md") -Force
 Copy-Item (Join-Path $ProjectRoot "LICENSE") (Join-Path $PackageDir "LICENSE") -Force
 
 Write-Host ""
-Write-Host "[4/6] Copy web static files..."
-
-$WebDistSrc = Join-Path $ProjectRoot "web\src"
-$WebDistDst = Join-Path $PackageDir "web\dist"
-
-if (-not (Test-Path $WebDistSrc)) {
-    throw "web/dist was not found."
+Write-Host "[4/7] Copy web static files..."
+$WebSrc = Join-Path $ProjectRoot "web\src"
+$WebDst = Join-Path $PackageDir "web\src"
+if (-not (Test-Path $WebSrc)) {
+    throw "web/src was not found."
 }
-
-Copy-Item $WebDistSrc $WebDistDst -Recurse -Force
+Copy-Item (Join-Path $WebSrc "*") $WebDst -Recurse -Force
 
 Write-Host ""
-Write-Host "[5/6] Create RUN.txt..."
+Write-Host "[5/7] Ensure runtime directories..."
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "logs") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $PackageDir "output") | Out-Null
 
+Write-Host ""
+Write-Host "[6/7] Create RUN.txt..."
 $RunTxt = @"
 ros-address-list-tool Windows amd64
 
-Start HTTP service:
-  .\ros-address-list-tool.exe -config .\config.json -serve -listen 127.0.0.1:8090
+1) Start HTTP service
+   .\ros-address-list-tool.exe -config .\config.json -serve -listen 127.0.0.1:8090
 
-Run one render only:
-  .\ros-address-list-tool.exe -config .\config.json
+2) Run one render only
+   .\ros-address-list-tool.exe -config .\config.json
 
-Web UI:
-  http://127.0.0.1:8090/
+3) Login page
+   http://127.0.0.1:8090/login.html
 
-Notes:
-1. Run the program inside this release directory.
-2. output is used for generated .rsc files.
-3. logs is used for log files.
-4. For remote access, configure auth_token or ROS_LIST_API_TOKEN.
+4) Web console
+   http://127.0.0.1:8090/
+
+5) Machine-to-machine RSC download endpoint
+   http://127.0.0.1:8090/api/v1/render/latest.rsc?access_token=YOUR_TOKEN&mode=replace_all
+
+Notes
+- Run the program inside this release directory.
+- config.json defaults to web_dir = ./web/src, so web files are packaged into web\src.
+- output is used for generated .rsc files.
+- logs is used for log files.
+- For API automation, prefer auth_token / access_token rather than browser login.
 "@
-
 Set-Content -Path (Join-Path $PackageDir "RUN.txt") -Value $RunTxt -Encoding UTF8
 
 Write-Host ""
-Write-Host "[6/6] Create ZIP package..."
-
+Write-Host "[7/7] Create ZIP package..."
 Compress-Archive -Path $PackageDir -DestinationPath $ZipPath -Force
 
 Write-Host ""
 Write-Host "Done."
 Write-Host "Folder: $PackageDir"
-Write-Host "ZIP:    $ZipPath"
+Write-Host "ZIP: $ZipPath"
 Write-Host ""
