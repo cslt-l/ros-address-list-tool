@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ROS Address List Tool - 登录</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f8fafc;
+            --panel: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --line: rgba(148, 163, 184, 0.28);
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --danger: #dc2626;
+            --danger-bg: rgba(220, 38, 38, 0.08);
+            --ok-bg: rgba(37, 99, 235, 0.08);
+            --shadow: 0 22px 60px rgba(15, 23, 42, 0.10);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(37,99,235,0.12), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(124,58,237,0.10), transparent 30%),
+                var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .login-shell {
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 30px 28px 24px;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            background: rgba(37,99,235,0.08);
+            color: var(--primary-dark);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .03em;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.2;
+        }
+
+        .subtitle {
+            margin: 12px 0 0;
+            color: var(--muted);
+            line-height: 1.7;
+            font-size: 14px;
+        }
+
+        .status {
+            margin-top: 18px;
+            border-radius: 16px;
+            padding: 12px 14px;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid transparent;
+            display: none;
+        }
+
+        .status.show { display: block; }
+        .status.error {
+            color: var(--danger);
+            background: var(--danger-bg);
+            border-color: rgba(220, 38, 38, 0.18);
+        }
+        .status.info {
+            color: var(--primary-dark);
+            background: var(--ok-bg);
+            border-color: rgba(37, 99, 235, 0.18);
+        }
+
+        form {
+            margin-top: 24px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        .field label {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .field input {
+            width: 100%;
+            border: 1px solid rgba(148, 163, 184, 0.38);
+            border-radius: 14px;
+            padding: 14px 15px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            color: var(--text);
+        }
+
+        .field input:focus {
+            border-color: rgba(37, 99, 235, 0.72);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+        }
+
+        .help {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 14px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+        }
+
+        button:hover { transform: translateY(-1px); }
+        button:disabled {
+            cursor: not-allowed;
+            opacity: .72;
+            transform: none;
+        }
+
+        .btn-primary {
+            color: #fff;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            box-shadow: 0 12px 24px rgba(37, 99, 235, 0.20);
+        }
+
+        .btn-secondary {
+            color: var(--text);
+            background: #eef2ff;
+        }
+
+        .hidden { display: none !important; }
+
+        .footer-note {
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.7;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+<div class="login-shell">
+    <div class="card">
+        <div class="eyebrow">后台登录保护已启用</div>
+        <h1 id="page-title">登录后台</h1>
+        <p id="page-subtitle" class="subtitle">
+            现在必须先登录，才能进入 Address List、Sources、Manual Rules 与渲染设置页面。
+        </p>
+
+        <div id="status-box" class="status"></div>
+
+        <form id="login-form" autocomplete="on">
+            <div class="field">
+                <label for="login-username">用户名</label>
+                <input id="login-username" name="username" type="text" autocomplete="username" value="admin" />
+            </div>
+
+            <div class="field">
+                <label for="login-password">密码</label>
+                <input id="login-password" name="password" type="password" autocomplete="current-password" value="password" />
+                <div class="help">
+                    首次默认账号为 <span class="mono">admin</span>，默认密码为 <span class="mono">password</span>。
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="btn-login" class="btn-primary" type="submit">登录</button>
+            </div>
+        </form>
+
+        <form id="change-password-form" class="hidden" autocomplete="off">
+            <div class="field">
+                <label for="current-password">当前密码</label>
+                <input id="current-password" name="current_password" type="password" autocomplete="current-password" />
+            </div>
+
+            <div class="field">
+                <label for="new-password">新密码</label>
+                <input id="new-password" name="new_password" type="password" autocomplete="new-password" />
+                <div class="help">新密码至少 8 位，且不能继续使用默认密码 password。</div>
+            </div>
+
+            <div class="field">
+                <label for="confirm-password">确认新密码</label>
+                <input id="confirm-password" type="password" autocomplete="new-password" />
+            </div>
+
+            <div class="actions">
+                <button id="btn-change-password" class="btn-primary" type="submit">修改密码并进入后台</button>
+                <button id="btn-logout" class="btn-secondary" type="button">退出当前登录</button>
+            </div>
+        </form>
+
+        <div class="footer-note">
+            如果你已经登录但会话过期，系统会自动跳回这个页面。
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+    const statusBox = document.getElementById("status-box");
+    const loginForm = document.getElementById("login-form");
+    const changeForm = document.getElementById("change-password-form");
+    const loginUsername = document.getElementById("login-username");
+    const loginPassword = document.getElementById("login-password");
+    const currentPassword = document.getElementById("current-password");
+    const newPassword = document.getElementById("new-password");
+    const confirmPassword = document.getElementById("confirm-password");
+    const btnLogin = document.getElementById("btn-login");
+    const btnChangePassword = document.getElementById("btn-change-password");
+    const btnLogout = document.getElementById("btn-logout");
+    const pageTitle = document.getElementById("page-title");
+    const pageSubtitle = document.getElementById("page-subtitle");
+
+    const query = new URLSearchParams(window.location.search);
+    let currentProfile = null;
+
+    function showStatus(message, type = "info") {
+        statusBox.textContent = String(message || "");
+        statusBox.className = `status show ${type}`;
+    }
+
+    function clearStatus() {
+        statusBox.textContent = "";
+        statusBox.className = "status";
+    }
+
+    function setBusy(button, busy, textWhenBusy, textNormal) {
+        if (!button) return;
+        button.disabled = !!busy;
+        button.textContent = busy ? textWhenBusy : textNormal;
+    }
+
+    async function api(path, options = {}, allow401 = false) {
+        const response = await fetch(path, {
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                ...(options.headers || {}),
+            },
+            ...options,
+        });
+
+        const text = await response.text();
+        let data = null;
+
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch (_) {
+            throw new Error(`响应不是合法 JSON：${text}`);
+        }
+
+        if (!response.ok) {
+            if (allow401 && response.status === 401) {
+                return null;
+            }
+            throw new Error(data && data.error ? data.error : `HTTP ${response.status}`);
+        }
+
+        return data;
+    }
+
+    function showLoginMode(message = "") {
+        pageTitle.textContent = "登录后台";
+        pageSubtitle.textContent = "先登录，才能进入各种设置页面。";
+        loginForm.classList.remove("hidden");
+        changeForm.classList.add("hidden");
+        if (message) {
+            showStatus(message, "info");
+        } else {
+            clearStatus();
+        }
+    }
+
+    function showChangeMode(message = "") {
+        pageTitle.textContent = "首次登录，先修改密码";
+        pageSubtitle.textContent = "当前账号已通过验证，但还不能进入后台。请先完成首次密码修改。";
+        loginForm.classList.add("hidden");
+        changeForm.classList.remove("hidden");
+        currentPassword.value = currentPassword.value || loginPassword.value || "password";
+        if (message) {
+            showStatus(message, "info");
+        } else {
+            clearStatus();
+        }
+    }
+
+    async function boot() {
+        const profile = await api("/api/v1/auth/me", { method: "GET" }, true);
+        currentProfile = profile;
+
+        if (profile && profile.authenticated) {
+            if (profile.must_change_password || query.get("force_change") === "1" || query.get("change_password") === "1") {
+                showChangeMode("请先修改默认密码，然后系统才会放行进入后台。");
+                return;
+            }
+            window.location.replace("/?entry_action=bootstrap_overview");
+            return;
+        }
+
+        if (query.get("force_change") === "1") {
+            showLoginMode("请先使用默认账号登录，随后系统会要求你立即修改密码。");
+            return;
+        }
+
+        showLoginMode();
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearStatus();
+        setBusy(btnLogin, true, "登录中...", "登录");
+
+        try {
+            const data = await api("/api/v1/auth/login", {
+                method: "POST",
+                body: JSON.stringify({
+                    username: loginUsername.value.trim(),
+                    password: loginPassword.value,
+                }),
+            });
+
+            currentProfile = data;
+
+            if (data.must_change_password) {
+                currentPassword.value = loginPassword.value;
+                showChangeMode("登录成功，但这是首次登录，必须先修改密码。");
+                return;
+            }
+
+            showStatus("登录成功，正在进入后台…", "info");
+            window.location.replace("/?entry_action=bootstrap_overview");
+        } catch (error) {
+            showStatus(error.message || "登录失败", "error");
+        } finally {
+            setBusy(btnLogin, false, "登录中...", "登录");
+        }
+    });
+
+    changeForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearStatus();
+
+        if (newPassword.value !== confirmPassword.value) {
+            showStatus("两次输入的新密码不一致", "error");
+            return;
+        }
+
+        setBusy(btnChangePassword, true, "提交中...", "修改密码并进入后台");
+
+        try {
+            await api("/api/v1/auth/change-password", {
+                method: "POST",
+                body: JSON.stringify({
+                    current_password: currentPassword.value,
+                    new_password: newPassword.value,
+                }),
+            });
+
+            showStatus("密码修改成功，正在进入后台…", "info");
+            window.location.replace("/?entry_action=bootstrap_overview");
+        } catch (error) {
+            showStatus(error.message || "修改密码失败", "error");
+        } finally {
+            setBusy(btnChangePassword, false, "提交中...", "修改密码并进入后台");
+        }
+    });
+
+    btnLogout.addEventListener("click", async () => {
+        try {
+            await api("/api/v1/auth/logout", {
+                method: "POST",
+                body: JSON.stringify({}),
+            }, true);
+        } catch (_) {
+            // 忽略退出失败，直接刷新到登录页。
+        }
+        window.location.replace("/login.html");
+    });
+
+    boot().catch((error) => {
+        showStatus(error.message || "初始化登录页失败", "error");
+    });
+})();
+</script>
+</body>
+</html>

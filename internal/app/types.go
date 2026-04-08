@@ -133,6 +133,28 @@ type ServerConfig struct {
 	// 建议优先通过环境变量 ROS_LIST_API_TOKEN 注入，
 	// 避免把敏感 token 直接写死在配置文件里。
 	AuthToken string `json:"auth_token,omitempty"`
+
+	// LoginEnabled 表示是否启用网页登录会话。
+	LoginEnabled bool `json:"login_enabled"`
+
+	// LoginUsername 表示后台登录用户名。
+	LoginUsername string `json:"login_username,omitempty"`
+
+	// LoginPassword 仅用于初始化或兼容旧配置。
+	// 一旦成功修改密码，程序会自动清空该字段并改写为 LoginPasswordHash。
+	LoginPassword string `json:"login_password,omitempty"`
+
+	// LoginPasswordHash 表示持久化保存的密码摘要。
+	LoginPasswordHash string `json:"login_password_hash,omitempty"`
+
+	// PasswordChangeRequired 表示当前是否处于“首次登录必须改密”状态。
+	PasswordChangeRequired bool `json:"password_change_required"`
+
+	// SessionCookieName 表示登录态 Cookie 名称。
+	SessionCookieName string `json:"session_cookie_name,omitempty"`
+
+	// SessionTTLMinutes 表示会话有效期（分钟）。
+	SessionTTLMinutes int `json:"session_ttl_minutes,omitempty"`
 }
 
 // AppConfig 是整个程序的总配置。
@@ -278,6 +300,23 @@ func (cfg *AppConfig) ApplyDefaults() {
 	// 如果环境变量里提供了 token，则覆盖配置值。
 	if envToken := strings.TrimSpace(os.Getenv("ROS_LIST_API_TOKEN")); envToken != "" {
 		cfg.Server.AuthToken = envToken
+	}
+
+	// Web 管理相关默认值。
+	if cfg.Server.LoginUsername == "" {
+		cfg.Server.LoginUsername = defaultLoginUsername
+	}
+	if cfg.Server.SessionCookieName == "" {
+		cfg.Server.SessionCookieName = defaultSessionCookieName
+	}
+	if cfg.Server.SessionTTLMinutes <= 0 {
+		cfg.Server.SessionTTLMinutes = defaultSessionTTLMinutes
+	}
+	if cfg.Server.LoginEnabled && cfg.Server.LoginPassword == "" && cfg.Server.LoginPasswordHash == "" {
+		cfg.Server.LoginPassword = defaultLoginPassword
+	}
+	if cfg.Server.LoginEnabled && cfg.Server.LoginPasswordHash == "" && cfg.Server.LoginPassword == defaultLoginPassword && !cfg.Server.PasswordChangeRequired {
+		cfg.Server.PasswordChangeRequired = true
 	}
 
 	// lists 中未填 family 的，默认补成 ipv4。

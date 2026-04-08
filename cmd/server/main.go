@@ -103,6 +103,10 @@ func main() {
 		fmt.Printf("监听地址: %s\n", addr)
 		fmt.Println("可用接口：")
 		fmt.Println("  GET  /healthz")
+		fmt.Println("  POST /api/v1/auth/login")
+		fmt.Println("  POST /api/v1/auth/logout")
+		fmt.Println("  GET  /api/v1/auth/me")
+		fmt.Println("  POST /api/v1/auth/change-password")
 		fmt.Println("  GET  /api/v1/config")
 		fmt.Println("  POST /api/v1/render")
 

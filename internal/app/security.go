@@ -231,5 +231,6 @@ func requiresAuthTokenForListen(addr string) bool {
 
 func sanitizeConfigForAPI(cfg AppConfig) AppConfig {
 	cfg.Server.AuthToken = ""
+	cfg.Server.LoginPassword = ""
 	return cfg
 }

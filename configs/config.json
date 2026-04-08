@@ -166,6 +166,12 @@
     "listen": "127.0.0.1:8090",
     "enable_web": true,
     "web_dir": "./web/src",
-    "auth_token": "signYourToken"
+    "auth_token": "signYourToken",
+    "login_enabled": true,
+    "login_username": "admin",
+    "login_password_hash": "password",
+    "password_change_required": true,
+    "session_cookie_name": "ros_list_session",
+    "session_ttl_minutes": 720
   }
 }

@@ -1,6 +1,9 @@
 const navButtons = Array.from(document.querySelectorAll(".nav-item"));
 const sections = Array.from(document.querySelectorAll(".page-section"));
 const messageBox = document.getElementById("message-box");
+const sessionStatusTextEl = document.getElementById("session-status-text");
+const btnOpenChangePassword = document.getElementById("btn-open-change-password");
+const btnLogout = document.getElementById("btn-logout");
 
 const btnCheckHealth = document.getElementById("btn-check-health");
 const btnLoadConfig = document.getElementById("btn-load-config");
@@ -119,6 +122,7 @@ const renderResultOutputPathEl = document.getElementById("render-result-output-p
 const renderScriptViewerEl = document.getElementById("render-script-viewer");
 
 let currentConfig = null;
+let currentSessionProfile = null;
 let currentLists = [];
 let currentRules = [];
 let currentDesiredSources = [];
@@ -130,6 +134,8 @@ let editingDesiredSourceName = "";
 let editingCurrentSourceName = "";
 
 let currentRenderResult = null;
+
+const pageQuery = new URLSearchParams(window.location.search);
 
 let lastProbeKind = "";
 let lastProbePayload = null;
@@ -199,6 +205,7 @@ function safeJSONStringify(value) {
 
 async function apiFetch(path, options = {}) {
     const response = await fetch(path, {
+        credentials: "include",
         headers: {
             "Content-Type": "application/json; charset=utf-8",
             ...(options.headers || {}),
@@ -220,10 +227,54 @@ async function apiFetch(path, options = {}) {
             data && typeof data.error === "string"
                 ? data.error
                 : `HTTP ${response.status}`;
+
+        if (response.status === 401 && path !== "/api/v1/auth/me") {
+            window.location.href = "/login.html";
+        }
+
+        if (
+            response.status === 403 &&
+            data &&
+            (data.must_change_password === true || message.includes("password change required"))
+        ) {
+            window.location.href = "/login.html?force_change=1";
+        }
+
         throw new Error(message);
     }
 
     return data;
+}
+
+async function ensureAuthenticatedPage() {
+    try {
+        const profile = await apiFetch("/api/v1/auth/me");
+        currentSessionProfile = profile;
+
+        if (profile && profile.must_change_password) {
+            window.location.href = "/login.html?force_change=1";
+            throw new Error("首次登录需要先修改密码");
+        }
+
+        renderSessionPanel(profile);
+        return profile;
+    } catch (error) {
+        if (!String(error?.message || "").includes("首次登录需要先修改密码")) {
+            window.location.href = "/login.html";
+        }
+        throw error;
+    }
+}
+
+function renderSessionPanel(profile) {
+    if (!sessionStatusTextEl) return;
+
+    if (!profile || !profile.authenticated) {
+        sessionStatusTextEl.textContent = "未登录";
+        return;
+    }
+
+    sessionStatusTextEl.textContent = `当前已登录：${profile.username || "admin"}。登录后才能访问后台各项设置。`;
 }
 
 function parseHeadersText(text) {
@@ -352,12 +403,17 @@ function renderConfigToViewer(config) {
     configViewerEl.classList.toggle("empty-viewer", !config);
 }
 
+async function fetchHealthStatus() {
+    setCompactValue(healthStatusEl, "检查中...");
+    const data = await apiFetch("/healthz");
+    setCompactValue(healthStatusEl, data?.status || "unknown");
+    return data;
+}
+
 async function checkHealth() {
     clearMessage();
     try {
-        setCompactValue(healthStatusEl, "检查中...");
-        const data = await apiFetch("/healthz");
-        setCompactValue(healthStatusEl, data?.status || "unknown");
+        await fetchHealthStatus();
         showMessage("服务状态检查成功。");
     } catch (error) {
         setCompactValue(healthStatusEl, "失败");
@@ -1553,8 +1609,60 @@ if (renderForm) {
     renderForm.addEventListener("submit", executeRender);
 }
 
+
+if (btnOpenChangePassword) {
+    btnOpenChangePassword.onclick = () => {
+        window.location.href = "/login.html?change_password=1";
+    };
+}
+
+if (btnLogout) {
+    btnLogout.onclick = async () => {
+        try {
+            await apiFetch("/api/v1/auth/logout", {
+                method: "POST",
+                body: JSON.stringify({}),
+            });
+        } catch (_) {
+            // 即便接口失败，也尝试跳回登录页。
+        }
+        window.location.href = "/login.html";
+    };
+}
+
+function resolveInitialSection() {
+    const requestedSection = String(pageQuery.get("section") || "").trim();
+    if (requestedSection && sections.some((section) => section.id === requestedSection)) {
+        return requestedSection;
+    }
+    return "dashboard-section";
+}
+
+function getEntryAction() {
+    return String(pageQuery.get("entry_action") || "").trim().toLowerCase();
+}
+
+function shouldAutoLoadDefaultConfig() {
+    return getEntryAction() === "load_default_config";
+}
+
+function shouldAutoBootstrapOverview() {
+    return getEntryAction() === "bootstrap_overview";
+}
+
+function clearEntryQueryFlags() {
+    if (!window.history || typeof window.history.replaceState !== "function") {
+        return;
+    }
+
+    const cleanURL = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, document.title, cleanURL);
+}
+
 // Init
 async function initializePage() {
+    await ensureAuthenticatedPage();
+
     clearMessage();
     clearSourceProbeResultView();
     clearRenderResultView();
@@ -1565,7 +1673,8 @@ async function initializePage() {
     resetCurrentSourceForm();
     resetRenderForm();
 
-    setActiveSection("dashboard-section");
+    const initialSection = resolveInitialSection();
+    setActiveSection(initialSection);
 
     await Promise.all([
         loadConfig(),
@@ -1574,6 +1683,25 @@ async function initializePage() {
         loadDesiredSources(),
         loadCurrentSources(),
     ]);
+
+    if (shouldAutoLoadDefaultConfig()) {
+        setActiveSection("config-section");
+        await loadConfig();
+        showMessage("登录成功，已在后台自动加载默认配置。", false);
+        clearEntryQueryFlags();
+        return;
+    }
+
+    if (shouldAutoBootstrapOverview()) {
+        try {
+            await fetchHealthStatus();
+            showMessage("登录成功，已在总览页自动检查服务状态并加载当前配置。", false);
+        } catch (error) {
+            setCompactValue(healthStatusEl, "失败");
+            showMessage(`已加载当前配置，但服务状态检查失败：${error.message}`, true);
+        }
+        clearEntryQueryFlags();
+    }
 }
 
 initializePage().catch((error) => {
