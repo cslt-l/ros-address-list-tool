@@ -45,13 +45,18 @@ func Execute(cfg AppConfig, logger *log.Logger) (ExecuteResult, error) {
 	logger.Printf("目标快照构建完成")
 
 	// 第三步：构建当前快照。
-	// 注意：
-	// 如果 current_state_sources 为空，这里也允许继续执行，
-	// 只是 current 会是一个空快照。
+	// 安全收口：
+	// diff 模式必须显式提供 current_state_sources，
+	// 不能再静默退化为空快照继续执行。
+	if cfg.Output.Mode == RenderModeDiff && len(cfg.CurrentStateSources) == 0 {
+		return ExecuteResult{}, fmt.Errorf("diff 模式必须提供 current_state_sources，不能使用空快照")
+	}
+
 	current := Snapshot{
 		Definitions: map[string]ListDefinition{},
 		Entries:     map[string][]string{},
 	}
+
 	if len(cfg.CurrentStateSources) > 0 {
 		current, err = BuildCurrentSnapshot(cfg)
 		if err != nil {

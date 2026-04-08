@@ -1,6 +1,7 @@
 package app
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,23 +27,23 @@ func NewHTTPHandler(store *ConfigStore, logger *log.Logger) http.Handler {
 
 	// ===================== API 接口 =====================
 
-	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/api/v1/config", s.handleConfig)
-	mux.HandleFunc("/api/v1/render", s.handleRender)
+	mux.HandleFunc("/healthz", s.wrap(s.handleHealthz))
+	mux.HandleFunc("/api/v1/config", s.wrap(s.handleConfig))
+	mux.HandleFunc("/api/v1/render", s.wrap(s.handleRender))
 
-	mux.HandleFunc("/api/v1/lists", s.handleLists)
-	mux.HandleFunc("/api/v1/lists/", s.handleListByName)
+	mux.HandleFunc("/api/v1/lists", s.wrap(s.handleLists))
+	mux.HandleFunc("/api/v1/lists/", s.wrap(s.handleListByName))
 
-	mux.HandleFunc("/api/v1/manual-rules", s.handleManualRules)
-	mux.HandleFunc("/api/v1/manual-rules/", s.handleManualRuleByID)
+	mux.HandleFunc("/api/v1/manual-rules", s.wrap(s.handleManualRules))
+	mux.HandleFunc("/api/v1/manual-rules/", s.wrap(s.handleManualRuleByID))
 
 	// sources 管理接口
-	mux.HandleFunc("/api/v1/sources/desired", s.handleDesiredSources)
-	mux.HandleFunc("/api/v1/sources/desired/", s.handleDesiredSourceByName)
-	mux.HandleFunc("/api/v1/sources/current", s.handleCurrentSources)
-	mux.HandleFunc("/api/v1/sources/current/", s.handleCurrentSourceByName)
+	mux.HandleFunc("/api/v1/sources/desired", s.wrap(s.handleDesiredSources))
+	mux.HandleFunc("/api/v1/sources/desired/", s.wrap(s.handleDesiredSourceByName))
+	mux.HandleFunc("/api/v1/sources/current", s.wrap(s.handleCurrentSources))
+	mux.HandleFunc("/api/v1/sources/current/", s.wrap(s.handleCurrentSourceByName))
 
-	mux.HandleFunc("/api/v1/sources/test", s.handleSourceTest)
+	mux.HandleFunc("/api/v1/sources/test", s.wrap(s.handleSourceTest))
 
 	// ===================== 静态文件托管 =====================
 
@@ -98,6 +99,111 @@ type apiServer struct {
 	logger *log.Logger
 }
 
+func extractBearerToken(authHeader string) string {
+	authHeader = strings.TrimSpace(authHeader)
+	if authHeader == "" {
+		return ""
+	}
+
+	const prefix = "Bearer "
+	if len(authHeader) < len(prefix) || !strings.EqualFold(authHeader[:len(prefix)], prefix) {
+		return ""
+	}
+
+	return strings.TrimSpace(authHeader[len(prefix):])
+}
+
+func secureTokenEqual(got, want string) bool {
+	if got == "" || want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func redactHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string, len(headers))
+	for k, v := range headers {
+		lk := strings.ToLower(strings.TrimSpace(k))
+		switch {
+		case lk == "authorization",
+			lk == "proxy-authorization",
+			strings.Contains(lk, "token"),
+			strings.Contains(lk, "secret"),
+			strings.Contains(lk, "api-key"),
+			strings.Contains(lk, "apikey"):
+			out[k] = "***redacted***"
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func redactSources(items []SourceConfig) []SourceConfig {
+	if len(items) == 0 {
+		return nil
+	}
+
+	out := make([]SourceConfig, len(items))
+	copy(out, items)
+	for i := range out {
+		out[i].Headers = redactHeaders(out[i].Headers)
+	}
+	return out
+}
+
+func redactConfig(cfg AppConfig) AppConfig {
+	cfg.Server.AuthToken = ""
+	cfg.DesiredSources = redactSources(cfg.DesiredSources)
+	cfg.CurrentStateSources = redactSources(cfg.CurrentStateSources)
+	return cfg
+}
+
+func (s *apiServer) authorizeAPIRequest(w http.ResponseWriter, r *http.Request) bool {
+	// healthz 保持匿名可访问
+	if r.URL.Path == "/healthz" {
+		return true
+	}
+
+	// 只保护 API 路径；静态页面默认不鉴权
+	if !strings.HasPrefix(r.URL.Path, "/api/") {
+		return true
+	}
+
+	cfg := s.store.GetConfig()
+	requiredToken := strings.TrimSpace(cfg.Server.AuthToken)
+
+	// 如果当前配置未要求 token，则放行。
+	// 是否允许这种配置启动，由 ValidateConfig 负责。
+	if requiredToken == "" {
+		return true
+	}
+
+	got := extractBearerToken(r.Header.Get("Authorization"))
+	if !secureTokenEqual(got, requiredToken) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ros-address-list-tool"`)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{
+			"error": "unauthorized",
+		})
+		return false
+	}
+
+	return true
+}
+
+func (s *apiServer) wrap(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authorizeAPIRequest(w, r) {
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *apiServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
@@ -120,12 +226,11 @@ func (s *apiServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.store.GetConfig()
-	writeJSON(w, http.StatusOK, cfg)
+	writeJSON(w, http.StatusOK, redactConfig(cfg))
 }
 
 type renderRequest struct {
-	Mode       RenderMode `json:"mode,omitempty"`
-	OutputPath string     `json:"output_path,omitempty"`
+	Mode RenderMode `json:"mode,omitempty"`
 }
 
 func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
@@ -145,9 +250,6 @@ func (s *apiServer) handleRender(w http.ResponseWriter, r *http.Request) {
 
 	if req.Mode != "" {
 		cfg.Output.Mode = req.Mode
-	}
-	if req.OutputPath != "" {
-		cfg.Output.Path = req.OutputPath
 	}
 
 	result, err := Execute(cfg, s.logger)
@@ -390,7 +492,7 @@ func (s *apiServer) handleDesiredSources(w http.ResponseWriter, r *http.Request)
 	switch r.Method {
 	case http.MethodGet:
 		cfg := s.store.GetConfig()
-		writeJSON(w, http.StatusOK, cfg.DesiredSources)
+		writeJSON(w, http.StatusOK, redactSources(cfg.DesiredSources))
 
 	case http.MethodPost:
 		var src SourceConfig
@@ -468,7 +570,7 @@ func (s *apiServer) handleCurrentSources(w http.ResponseWriter, r *http.Request)
 	switch r.Method {
 	case http.MethodGet:
 		cfg := s.store.GetConfig()
-		writeJSON(w, http.StatusOK, cfg.CurrentStateSources)
+		writeJSON(w, http.StatusOK, redactSources(cfg.CurrentStateSources))
 
 	case http.MethodPost:
 		var src SourceConfig

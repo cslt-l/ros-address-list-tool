@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net"
 	"os"
 	"strings"
 )
@@ -215,6 +216,36 @@ type ExecuteResult struct {
 
 	// EntryCount 表示涉及的总条目数量。
 	EntryCount int
+}
+
+func isLocalListenAddress(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return true
+	}
+
+	// ":8090" / "0.0.0.0:8090" / "[::]:8090" 都应视为非本机
+	if strings.HasPrefix(addr, ":") {
+		return false
+	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// 解析不了时宁可按非本机处理
+		return false
+	}
+
+	host = strings.TrimSpace(strings.ToLower(host))
+	switch host {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func requiresAPIToken(listen string) bool {
+	return !isLocalListenAddress(listen)
 }
 
 // ApplyDefaults 用于补充默认值。

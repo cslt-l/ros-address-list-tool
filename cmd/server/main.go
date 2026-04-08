@@ -61,6 +61,13 @@ func main() {
 		cfg.LogFile = *logFile
 	}
 
+	// 覆盖完成后，必须重新补默认值并重新校验。
+	cfg.ApplyDefaults()
+	if err := app.ValidateConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "命令行覆盖后的配置无效: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 初始化日志器。
 	logger, closeFn, err := app.NewLogger(cfg.LogFile)
 	if err != nil {
