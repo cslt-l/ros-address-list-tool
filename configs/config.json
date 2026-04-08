@@ -65,7 +65,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanTelecom4",
       "target_list_family": "ipv4",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -77,7 +81,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanTelecom6",
       "target_list_family": "ipv6",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -89,7 +97,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanMobile4",
       "target_list_family": "ipv4",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -101,7 +113,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanMobile6",
       "target_list_family": "ipv6",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -113,7 +129,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanUnicom4",
       "target_list_family": "ipv4",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -125,7 +145,11 @@
       "format": "plain_cidr",
       "target_list_name": "toWanUnicom6",
       "target_list_family": "ipv6",
-      "line_comment_prefixes": ["#", "//", ";"],
+      "line_comment_prefixes": [
+        "#",
+        "//",
+        ";"
+      ],
       "enabled": true,
       "priority": 100,
       "timeout_seconds": 30
@@ -141,6 +165,7 @@
   "server": {
     "listen": "127.0.0.1:8090",
     "enable_web": true,
-    "web_dir": "./web/src"
+    "web_dir": "./web/src",
+    "auth_token": "signYourToken"
   }
 }
