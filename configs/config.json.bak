@@ -39,22 +39,34 @@
       "description": "中国联通 IPv6"
     },
     {
-      "name": "toWanGlobal4",
-      "family": "ipv4",
-      "enabled": true,
-      "description": "默认国际/未知 IPv4"
-    },
-    {
-      "name": "toWanGlobal6",
-      "family": "ipv6",
-      "enabled": true,
-      "description": "默认国际/未知 IPv6"
-    },
-    {
       "name": "toPccBalance4",
       "family": "ipv4",
       "enabled": true,
       "description": "PCC 负载均衡 IPv4"
+    },
+    {
+      "name": "toWanEducation4",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "中国教育网 IPv4"
+    },
+    {
+      "name": "toWanEducation6",
+      "family": "ipv6",
+      "enabled": true,
+      "description": "中国教育网 IPv6"
+    },
+    {
+      "name": "toWanCstnet4",
+      "family": "ipv4",
+      "enabled": true,
+      "description": "中国科技网 IPv4"
+    },
+    {
+      "name": "toWanCstnet6",
+      "family": "ipv6",
+      "enabled": true,
+      "description": "中国科技网 IPv6"
     }
   ],
   "desired_sources": [
@@ -156,7 +168,7 @@
     }
   ],
   "current_state_sources": [],
-  "manual_rules": [],
+  "manual_rules": null,
   "output": {
     "path": "./output/routeros-address-list.rsc",
     "mode": "replace_all",
@@ -169,8 +181,8 @@
     "auth_token": "signYourToken",
     "login_enabled": true,
     "login_username": "admin",
-    "login_password": "password",
-    "password_change_required": true,
+    "login_password_hash": "pbkdf2-sha256$120000$372ee67de5b284e9e18a25ae2071ec44$e7014224e005fcbc006a66240b642b9c221f8e4b82162e488c6831af7a1798f7",
+    "password_change_required": false,
     "session_cookie_name": "ros_list_session",
     "session_ttl_minutes": 720
   }

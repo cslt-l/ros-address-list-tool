@@ -172,6 +172,32 @@ func redactSources(items []SourceConfig) []SourceConfig {
 	return out
 }
 
+func cloneSourceConfig(src SourceConfig) SourceConfig {
+	out := src
+
+	if len(src.Headers) > 0 {
+		out.Headers = make(map[string]string, len(src.Headers))
+		for k, v := range src.Headers {
+			out.Headers[k] = v
+		}
+	}
+
+	if len(src.LineCommentPrefixes) > 0 {
+		out.LineCommentPrefixes = append([]string(nil), src.LineCommentPrefixes...)
+	}
+
+	return out
+}
+
+func findSourceConfigByName(sources []SourceConfig, name string) (SourceConfig, bool) {
+	for _, item := range sources {
+		if item.Name == name {
+			return cloneSourceConfig(item), true
+		}
+	}
+	return SourceConfig{}, false
+}
+
 func redactConfig(cfg AppConfig) AppConfig {
 	cfg.Server.AuthToken = ""
 	cfg.Server.LoginPassword = ""
@@ -917,6 +943,18 @@ func (s *apiServer) handleDesiredSourceByName(w http.ResponseWriter, r *http.Req
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		cfg := s.store.GetConfig()
+		item, ok := findSourceConfigByName(cfg.DesiredSources, name)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "desired source not found",
+			})
+			return
+		}
+		// 详情接口返回原始值，避免编辑时把 ***redacted*** 覆盖回配置。
+		writeJSON(w, http.StatusOK, item)
+
 	case http.MethodPut:
 		var src SourceConfig
 		if !decodeJSONBody(w, r, &src, false) {
@@ -924,7 +962,6 @@ func (s *apiServer) handleDesiredSourceByName(w http.ResponseWriter, r *http.Req
 		}
 
 		src.Name = name
-
 		if err := s.store.UpsertDesiredSource(src); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": err.Error(),
@@ -995,6 +1032,17 @@ func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Req
 	}
 
 	switch r.Method {
+	case http.MethodGet:
+		cfg := s.store.GetConfig()
+		item, ok := findSourceConfigByName(cfg.CurrentStateSources, name)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "current source not found",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+
 	case http.MethodPut:
 		var src SourceConfig
 		if !decodeJSONBody(w, r, &src, false) {
@@ -1002,7 +1050,6 @@ func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Req
 		}
 
 		src.Name = name
-
 		if err := s.store.UpsertCurrentSource(src); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": err.Error(),
@@ -1032,7 +1079,6 @@ func (s *apiServer) handleCurrentSourceByName(w http.ResponseWriter, r *http.Req
 		})
 	}
 }
-
 func (s *apiServer) handleSourceTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{

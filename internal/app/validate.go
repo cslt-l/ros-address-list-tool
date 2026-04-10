@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	neturl "net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -31,6 +32,32 @@ var listNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // sourceNamePattern 复用与 list 相同的保守规则。
 var sourceNamePattern = listNamePattern
+
+func normalizeSourcePathForDuplicate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	raw = filepath.Clean(raw)
+	raw = strings.ReplaceAll(raw, "\\", "/")
+	return raw
+}
+
+func normalizeSourceURLForDuplicate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	u.Fragment = ""
+	u.Host = strings.ToLower(u.Host)
+	return u.String()
+}
 
 // ValidateConfig 对整个 AppConfig 做结构层面的合法性校验。
 func ValidateConfig(cfg AppConfig) error {
@@ -108,6 +135,9 @@ func ValidateConfig(cfg AppConfig) error {
 
 	validateSources := func(kind string, sources []SourceConfig) {
 		sourceSeen := make(map[string]struct{})
+		filePathSeen := make(map[string]int)
+		urlSeen := make(map[string]int)
+
 		for i, src := range sources {
 			name := strings.TrimSpace(src.Name)
 			if name == "" {
@@ -137,14 +167,22 @@ func ValidateConfig(cfg AppConfig) error {
 				verr.add(fmt.Sprintf("%s[%d].format 非法：%q，只支持 json 或 plain_cidr", kind, i, src.Format))
 			}
 
-			// 禁用的 source 允许暂时不填 path/url。
+			// 禁用的 source 允许暂时不填 path/url，不继续做位置强校验
 			if !src.Enabled {
 				continue
 			}
 
 			if srcType == "file" {
-				if strings.TrimSpace(src.Path) == "" {
+				rawPath := strings.TrimSpace(src.Path)
+				if rawPath == "" {
 					verr.add(fmt.Sprintf("%s[%d] type=file 时必须提供 path", kind, i))
+				} else {
+					normPath := normalizeSourcePathForDuplicate(rawPath)
+					if prev, ok := filePathSeen[normPath]; ok {
+						verr.add(fmt.Sprintf("%s[%d].path 重复：%q（与 %s[%d] 重复）", kind, i, rawPath, kind, prev))
+					} else {
+						filePathSeen[normPath] = i
+					}
 				}
 			}
 
@@ -162,7 +200,15 @@ func ValidateConfig(cfg AppConfig) error {
 							verr.add(fmt.Sprintf("%s[%d].url 非法：仅支持 http/https，当前为 %q", kind, i, parsed.Scheme))
 						}
 					}
+
+					normURL := normalizeSourceURLForDuplicate(rawURL)
+					if prev, ok := urlSeen[normURL]; ok {
+						verr.add(fmt.Sprintf("%s[%d].url 重复：%q（与 %s[%d] 重复）", kind, i, rawURL, kind, prev))
+					} else {
+						urlSeen[normURL] = i
+					}
 				}
+
 				if src.TimeoutSeconds <= 0 {
 					verr.add(fmt.Sprintf("%s[%d].timeout_seconds 必须大于 0", kind, i))
 				}

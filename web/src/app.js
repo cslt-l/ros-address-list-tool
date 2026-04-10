@@ -81,6 +81,20 @@ const currentSourceTypeSelect = document.getElementById("current-source-type");
 const currentSourcePathInput = document.getElementById("current-source-path");
 const currentSourceURLInput = document.getElementById("current-source-url");
 const currentSourceHeadersInput = document.getElementById("current-source-headers");
+
+const desiredSourceFormatSelect = document.getElementById("desired-source-format");
+const desiredSourceTargetListNameInput = document.getElementById("desired-source-target-list-name");
+const desiredSourceTargetListFamilySelect = document.getElementById("desired-source-target-list-family");
+const desiredSourceLineCommentPrefixesInput = document.getElementById("desired-source-line-comment-prefixes");
+const desiredSourceTargetFieldsWrap = document.getElementById("desired-source-target-fields");
+
+const currentSourceFormatSelect = document.getElementById("current-source-format");
+const currentSourceTargetListNameInput = document.getElementById("current-source-target-list-name");
+const currentSourceTargetListFamilySelect = document.getElementById("current-source-target-list-family");
+const currentSourceLineCommentPrefixesInput = document.getElementById("current-source-line-comment-prefixes");
+const currentSourceTargetFieldsWrap = document.getElementById("current-source-target-fields");
+
+
 const currentSourcePriorityInput = document.getElementById("current-source-priority");
 const currentSourceTimeoutInput = document.getElementById("current-source-timeout");
 const currentSourceEnabledInput = document.getElementById("current-source-enabled");
@@ -284,17 +298,27 @@ function parseHeadersText(text) {
         .filter(Boolean);
 
     const headers = {};
+    const seenKeys = new Set();
 
     for (const line of lines) {
         const index = line.indexOf(":");
         if (index <= 0) {
             throw new Error(`Headers 格式错误：${line}`);
         }
+
         const key = line.slice(0, index).trim();
         const value = line.slice(index + 1).trim();
+
         if (!key) {
             throw new Error(`Headers key 不能为空：${line}`);
         }
+
+        const normalizedKey = key.toLowerCase();
+        if (seenKeys.has(normalizedKey)) {
+            throw new Error(`Headers key 重复：${key}`);
+        }
+        seenKeys.add(normalizedKey);
+
         headers[key] = value;
     }
 
@@ -309,6 +333,179 @@ function stringifyHeadersMap(headers) {
     return Object.entries(headers)
         .map(([key, value]) => `${key}: ${value}`)
         .join("\n");
+}
+
+function parseLineCommentPrefixesText(text) {
+    return Array.from(
+        new Set(
+            String(text || "")
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean)
+        )
+    );
+}
+
+function stringifyLineCommentPrefixes(items) {
+    if (!Array.isArray(items)) return "";
+    return items.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
+}
+
+function normalizeSourcePathForDuplicate(value) {
+    return String(value || "").trim().replace(/\\/g, "/");
+}
+
+function normalizeSourceURLForDuplicate(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+        const u = new URL(raw);
+        u.hash = "";
+        u.host = u.host.toLowerCase();
+        return u.toString();
+    } catch (_) {
+        return raw;
+    }
+}
+
+function syncSourceAdvancedUI(kind) {
+    const isDesired = kind === "desired";
+
+    const formatSelect = isDesired ? desiredSourceFormatSelect : currentSourceFormatSelect;
+    const targetFieldsWrap = isDesired ? desiredSourceTargetFieldsWrap : currentSourceTargetFieldsWrap;
+
+    const showPlainCIDR = String(formatSelect?.value || "json").trim() === "plain_cidr";
+
+    if (targetFieldsWrap) {
+        targetFieldsWrap.style.display = showPlainCIDR ? "" : "none";
+    }
+}
+
+function buildSourcePayload(kind) {
+    const isDesired = kind === "desired";
+
+    const nameInput = isDesired ? desiredSourceNameInput : currentSourceNameInput;
+    const typeSelect = isDesired ? desiredSourceTypeSelect : currentSourceTypeSelect;
+    const formatSelect = isDesired ? desiredSourceFormatSelect : currentSourceFormatSelect;
+    const pathInput = isDesired ? desiredSourcePathInput : currentSourcePathInput;
+    const urlInput = isDesired ? desiredSourceURLInput : currentSourceURLInput;
+    const headersInput = isDesired ? desiredSourceHeadersInput : currentSourceHeadersInput;
+    const priorityInput = isDesired ? desiredSourcePriorityInput : currentSourcePriorityInput;
+    const timeoutInput = isDesired ? desiredSourceTimeoutInput : currentSourceTimeoutInput;
+    const enabledInput = isDesired ? desiredSourceEnabledInput : currentSourceEnabledInput;
+    const targetListNameInput = isDesired ? desiredSourceTargetListNameInput : currentSourceTargetListNameInput;
+    const targetListFamilySelect = isDesired ? desiredSourceTargetListFamilySelect : currentSourceTargetListFamilySelect;
+    const lineCommentPrefixesInput = isDesired ? desiredSourceLineCommentPrefixesInput : currentSourceLineCommentPrefixesInput;
+
+    const name = String(nameInput?.value || "").trim();
+    const type = String(typeSelect?.value || "file").trim();
+    const format = String(formatSelect?.value || "json").trim();
+    const path = String(pathInput?.value || "").trim();
+    const url = String(urlInput?.value || "").trim();
+    const priority = Number(priorityInput?.value || 0);
+    const timeoutSeconds = Number(timeoutInput?.value || 0);
+    const enabled = Boolean(enabledInput?.checked);
+    const targetListName = String(targetListNameInput?.value || "").trim();
+    const targetListFamily = String(targetListFamilySelect?.value || "").trim();
+    const lineCommentPrefixes = parseLineCommentPrefixesText(lineCommentPrefixesInput?.value || "");
+
+    if (!name) {
+        throw new Error("Source Name 不能为空。");
+    }
+
+    if (!Number.isFinite(priority)) {
+        throw new Error("Priority 必须是数字。");
+    }
+
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+        throw new Error("Timeout Seconds 必须大于 0。");
+    }
+
+    if (type !== "file" && type !== "url") {
+        throw new Error(`Source Type 非法：${type}`);
+    }
+
+    if (format !== "json" && format !== "plain_cidr") {
+        throw new Error(`Source Format 非法：${format}`);
+    }
+
+    const payload = {
+        name,
+        type,
+        format,
+        enabled,
+        priority,
+        timeout_seconds: timeoutSeconds,
+    };
+
+    if (type === "file") {
+        if (enabled && !path) {
+            throw new Error("file 类型时 Path 不能为空。");
+        }
+        if (path) payload.path = path;
+    } else {
+        if (enabled && !url) {
+            throw new Error("url 类型时 URL 不能为空。");
+        }
+        if (url) payload.url = url;
+
+        const headers = parseHeadersText(headersInput?.value || "");
+        if (Object.keys(headers).length > 0) {
+            payload.headers = headers;
+        }
+    }
+
+    if (format === "plain_cidr") {
+        if (!targetListName) {
+            throw new Error("plain_cidr 格式时 Target List Name 不能为空。");
+        }
+        payload.target_list_name = targetListName;
+
+        if (targetListFamily) {
+            payload.target_list_family = targetListFamily;
+        }
+
+        if (lineCommentPrefixes.length > 0) {
+            payload.line_comment_prefixes = lineCommentPrefixes;
+        }
+    }
+
+    return payload;
+}
+
+function validateSourceDuplicate(kind, payload) {
+    const list = kind === "desired" ? currentDesiredSources : currentCurrentSources;
+    const editingName = kind === "desired" ? editingDesiredSourceName : editingCurrentSourceName;
+    const normalizedName = String(payload.name || "").trim();
+
+    for (const item of list) {
+        const itemName = String(item?.name || "").trim();
+        if (!itemName) continue;
+
+        if (editingName && itemName === editingName) {
+            continue;
+        }
+
+        if (itemName === normalizedName) {
+            throw new Error(`Source 名称重复：${normalizedName}`);
+        }
+
+        if (
+            payload.type === "file" &&
+            item.type === "file" &&
+            normalizeSourcePathForDuplicate(item.path) === normalizeSourcePathForDuplicate(payload.path)
+        ) {
+            throw new Error(`Source Path 重复：${payload.path}`);
+        }
+
+        if (
+            payload.type === "url" &&
+            item.type === "url" &&
+            normalizeSourceURLForDuplicate(item.url) === normalizeSourceURLForDuplicate(payload.url)
+        ) {
+            throw new Error(`Source URL 重复：${payload.url}`);
+        }
+    }
 }
 
 function makeActionButton(label, className, onClick) {
@@ -804,25 +1001,42 @@ async function submitRuleForm(event) {
 // Sources
 function resetDesiredSourceForm() {
     editingDesiredSourceName = "";
+
     if (desiredSourceForm) desiredSourceForm.reset();
+
     desiredSourceHeadersInput.value = "";
     desiredSourceTypeSelect.value = "file";
+    desiredSourceFormatSelect.value = "json";
     desiredSourcePriorityInput.value = "100";
     desiredSourceTimeoutInput.value = "15";
     desiredSourceEnabledInput.checked = true;
+    desiredSourceTargetListNameInput.value = "";
+    desiredSourceTargetListFamilySelect.value = "";
+    desiredSourceLineCommentPrefixesInput.value = "";
+
     syncSourceTypeUI("desired");
+    syncSourceAdvancedUI("desired");
 }
 
 function resetCurrentSourceForm() {
     editingCurrentSourceName = "";
+
     if (currentSourceForm) currentSourceForm.reset();
+
     currentSourceHeadersInput.value = "";
     currentSourceTypeSelect.value = "file";
+    currentSourceFormatSelect.value = "json";
     currentSourcePriorityInput.value = "100";
     currentSourceTimeoutInput.value = "15";
     currentSourceEnabledInput.checked = true;
+    currentSourceTargetListNameInput.value = "";
+    currentSourceTargetListFamilySelect.value = "";
+    currentSourceLineCommentPrefixesInput.value = "";
+
     syncSourceTypeUI("current");
+    syncSourceAdvancedUI("current");
 }
+
 
 async function loadDesiredSources() {
     try {
@@ -856,11 +1070,12 @@ async function loadCurrentSources() {
     }
 }
 
+
 function renderSourceTable(targetBody, items, kind) {
     if (!targetBody) return;
 
     if (!items.length) {
-        appendEmptyRow(targetBody, 8, "当前没有任何 source");
+        appendEmptyRow(targetBody, 11, "当前没有任何 source");
         return;
     }
 
@@ -873,11 +1088,17 @@ function renderSourceTable(targetBody, items, kind) {
         const headerText = headerCount > 0 ? `${headerCount} 个` : "-";
         const enabledText = boolText(item.enabled);
         const toggleText = item.enabled ? "停用" : "启用";
+        const formatText = item.format || "json";
+        const targetListNameText = item.target_list_name || "-";
+        const targetListFamilyText = item.target_list_family || "-";
 
         tr.innerHTML = `
       <td>${escapeHTML(item.name)}</td>
       <td>${escapeHTML(item.type)}</td>
+      <td>${escapeHTML(formatText)}</td>
       <td>${escapeHTML(location)}</td>
+      <td>${escapeHTML(targetListNameText)}</td>
+      <td>${escapeHTML(targetListFamilyText)}</td>
       <td>${escapeHTML(headerText)}</td>
       <td>${enabledText}</td>
       <td>${escapeHTML(String(item.priority ?? ""))}</td>
@@ -890,9 +1111,11 @@ function renderSourceTable(targetBody, items, kind) {
         actionCell.appendChild(
             makeActionButton("编辑", "btn btn-sm", () => editSource(kind, item.name))
         );
+
         actionCell.appendChild(
             makeActionButton(toggleText, "btn btn-sm", () => toggleSourceEnabled(kind, item.name))
         );
+
         actionCell.appendChild(
             makeActionButton("删除", "btn btn-sm btn-danger", () => deleteSource(kind, item.name))
         );
@@ -903,28 +1126,42 @@ function renderSourceTable(targetBody, items, kind) {
 
 function fillDesiredSourceForm(item) {
     editingDesiredSourceName = item?.name || "";
+
     desiredSourceNameInput.value = item?.name || "";
     desiredSourceTypeSelect.value = item?.type || "file";
+    desiredSourceFormatSelect.value = item?.format || "json";
     desiredSourcePathInput.value = item?.path || "";
     desiredSourceURLInput.value = item?.url || "";
     desiredSourceHeadersInput.value = stringifyHeadersMap(item?.headers);
+    desiredSourceTargetListNameInput.value = item?.target_list_name || "";
+    desiredSourceTargetListFamilySelect.value = item?.target_list_family || "";
+    desiredSourceLineCommentPrefixesInput.value = stringifyLineCommentPrefixes(item?.line_comment_prefixes);
     desiredSourcePriorityInput.value = String(item?.priority ?? 100);
     desiredSourceTimeoutInput.value = String(item?.timeout_seconds ?? 15);
     desiredSourceEnabledInput.checked = Boolean(item?.enabled);
+
     syncSourceTypeUI("desired");
+    syncSourceAdvancedUI("desired");
 }
 
 function fillCurrentSourceForm(item) {
     editingCurrentSourceName = item?.name || "";
+
     currentSourceNameInput.value = item?.name || "";
     currentSourceTypeSelect.value = item?.type || "file";
+    currentSourceFormatSelect.value = item?.format || "json";
     currentSourcePathInput.value = item?.path || "";
     currentSourceURLInput.value = item?.url || "";
     currentSourceHeadersInput.value = stringifyHeadersMap(item?.headers);
+    currentSourceTargetListNameInput.value = item?.target_list_name || "";
+    currentSourceTargetListFamilySelect.value = item?.target_list_family || "";
+    currentSourceLineCommentPrefixesInput.value = stringifyLineCommentPrefixes(item?.line_comment_prefixes);
     currentSourcePriorityInput.value = String(item?.priority ?? 100);
     currentSourceTimeoutInput.value = String(item?.timeout_seconds ?? 15);
     currentSourceEnabledInput.checked = Boolean(item?.enabled);
+
     syncSourceTypeUI("current");
+    syncSourceAdvancedUI("current");
 }
 
 function findSource(kind, name) {
@@ -945,10 +1182,7 @@ async function editSource(kind, name) {
     clearMessage();
 
     try {
-        let item = findSource(kind, name);
-        if (!item) {
-            item = await getSourceByName(kind, name);
-        }
+        const item = await getSourceByName(kind, name);
 
         if (!item) {
             showMessage(`未找到 source：${name}`, true);
@@ -969,25 +1203,26 @@ async function editSource(kind, name) {
 }
 
 async function toggleSourceEnabled(kind, name) {
-    const item = findSource(kind, name);
-    if (!item) {
-        showMessage(`未找到 source：${name}`, true);
-        return;
-    }
-
-    const payload = {
-        ...item,
-        enabled: !item.enabled,
-    };
-
-    const path =
-        kind === "desired"
-            ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
-            : `/api/v1/sources/current/${encodeURIComponent(name)}`;
-
     clearMessage();
 
     try {
+        const item = await getSourceByName(kind, name);
+
+        if (!item) {
+            showMessage(`未找到 source：${name}`, true);
+            return;
+        }
+
+        const payload = {
+            ...item,
+            enabled: !item.enabled,
+        };
+
+        const path =
+            kind === "desired"
+                ? `/api/v1/sources/desired/${encodeURIComponent(name)}`
+                : `/api/v1/sources/current/${encodeURIComponent(name)}`;
+
         await apiFetch(path, {
             method: "PUT",
             body: JSON.stringify(payload),
@@ -1000,11 +1235,9 @@ async function toggleSourceEnabled(kind, name) {
         }
         await loadConfig();
 
-        showMessage(
-            `已${payload.enabled ? "启用" : "停用"} source：${name}`
-        );
+        showMessage(`已${payload.enabled ? "启用" : "停用"} source：${name}`);
     } catch (error) {
-        showMessage(`切换 source 状态失败：${error.message}`, true);
+        showMessage(`切换 source 启用状态失败：${error.message}`, true);
     }
 }
 
@@ -1069,46 +1302,16 @@ async function submitDesiredSourceForm(event) {
     event.preventDefault();
     clearMessage();
 
-    let payload;
     try {
-        payload = buildSourcePayloadFromDesiredForm();
-    } catch (error) {
-        showMessage(`Desired Source Headers 解析失败：${error.message}`, true);
-        return;
-    }
+        const payload = buildSourcePayload("desired");
+        validateSourceDuplicate("desired", payload);
 
-    if (!payload.name) {
-        showMessage("Desired Source Name 不能为空。", true);
-        return;
-    }
-
-    if (payload.type === "file" && !payload.path) {
-        showMessage("type=file 时 Path 不能为空。", true);
-        return;
-    }
-
-    if (payload.type === "url" && !payload.url) {
-        showMessage("type=url 时 URL 不能为空。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.priority)) {
-        showMessage("Priority 必须是数字。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
-        showMessage("Timeout Seconds 必须是大于 0 的数字。", true);
-        return;
-    }
-
-    try {
-        if (editingDesiredSourceName) {
-            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(editingDesiredSourceName)}`, {
+        if (editingDesiredSourceName && editingDesiredSourceName === payload.name) {
+            await apiFetch(`/api/v1/sources/desired/${encodeURIComponent(payload.name)}`, {
                 method: "PUT",
                 body: JSON.stringify(payload),
             });
-            showMessage(`已更新 Desired Source：${editingDesiredSourceName}`);
+            showMessage(`已更新 Desired Source：${payload.name}`);
         } else {
             await apiFetch("/api/v1/sources/desired", {
                 method: "POST",
@@ -1129,46 +1332,16 @@ async function submitCurrentSourceForm(event) {
     event.preventDefault();
     clearMessage();
 
-    let payload;
     try {
-        payload = buildSourcePayloadFromCurrentForm();
-    } catch (error) {
-        showMessage(`Current Source Headers 解析失败：${error.message}`, true);
-        return;
-    }
+        const payload = buildSourcePayload("current");
+        validateSourceDuplicate("current", payload);
 
-    if (!payload.name) {
-        showMessage("Current Source Name 不能为空。", true);
-        return;
-    }
-
-    if (payload.type === "file" && !payload.path) {
-        showMessage("type=file 时 Path 不能为空。", true);
-        return;
-    }
-
-    if (payload.type === "url" && !payload.url) {
-        showMessage("type=url 时 URL 不能为空。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.priority)) {
-        showMessage("Priority 必须是数字。", true);
-        return;
-    }
-
-    if (!Number.isFinite(payload.timeout_seconds) || payload.timeout_seconds <= 0) {
-        showMessage("Timeout Seconds 必须是大于 0 的数字。", true);
-        return;
-    }
-
-    try {
-        if (editingCurrentSourceName) {
-            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(editingCurrentSourceName)}`, {
+        if (editingCurrentSourceName && editingCurrentSourceName === payload.name) {
+            await apiFetch(`/api/v1/sources/current/${encodeURIComponent(payload.name)}`, {
                 method: "PUT",
                 body: JSON.stringify(payload),
             });
-            showMessage(`已更新 Current Source：${editingCurrentSourceName}`);
+            showMessage(`已更新 Current Source：${payload.name}`);
         } else {
             await apiFetch("/api/v1/sources/current", {
                 method: "POST",
@@ -1702,6 +1875,38 @@ async function initializePage() {
         }
         clearEntryQueryFlags();
     }
+    if (desiredSourceForm) {
+        desiredSourceForm.addEventListener("submit", submitDesiredSourceForm);
+    }
+    if (currentSourceForm) {
+        currentSourceForm.addEventListener("submit", submitCurrentSourceForm);
+    }
+
+    if (desiredSourceTypeSelect) {
+        desiredSourceTypeSelect.addEventListener("change", () => {
+            syncSourceTypeUI("desired");
+            syncSourceAdvancedUI("desired");
+        });
+    }
+    if (currentSourceTypeSelect) {
+        currentSourceTypeSelect.addEventListener("change", () => {
+            syncSourceTypeUI("current");
+            syncSourceAdvancedUI("current");
+        });
+    }
+
+    if (desiredSourceFormatSelect) {
+        desiredSourceFormatSelect.addEventListener("change", () => {
+            syncSourceAdvancedUI("desired");
+        });
+    }
+    if (currentSourceFormatSelect) {
+        currentSourceFormatSelect.addEventListener("change", () => {
+            syncSourceAdvancedUI("current");
+        });
+    }
+    syncSourceAdvancedUI("desired");
+    syncSourceAdvancedUI("current");
 }
 
 initializePage().catch((error) => {

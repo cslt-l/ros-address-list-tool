@@ -559,7 +559,10 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
+                                <th>Format</th>
                                 <th>Path / URL</th>
+                                <th>Target List</th>
+                                <th>Target Family</th>
                                 <th>Headers</th>
                                 <th>Enabled</th>
                                 <th>Priority</th>
@@ -569,7 +572,7 @@
                             </thead>
                             <tbody id="desired-sources-table-body">
                             <tr>
-                                <td colspan="8" class="empty-cell">尚未加载</td>
+                                <td colspan="11" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -598,6 +601,14 @@
                             </select>
                         </div>
 
+                        <div class="form-row">
+                            <label for="desired-source-format">Format</label>
+                            <select id="desired-source-format">
+                                <option value="json">json</option>
+                                <option value="plain_cidr">plain_cidr</option>
+                            </select>
+                        </div>
+
                         <div class="form-row form-row-full">
                             <label for="desired-source-path">Path</label>
                             <input id="desired-source-path" type="text" placeholder="./data/desired-3.json" />
@@ -623,6 +634,36 @@
                             ></textarea>
                             <div class="field-help field-help-muted">
                                 URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
+                        <div id="desired-source-target-fields" class="form-row form-row-full" style="display:none;">
+                            <div class="form-grid">
+                                <div class="form-row">
+                                    <label for="desired-source-target-list-name">Target List Name</label>
+                                    <input id="desired-source-target-list-name" type="text" placeholder="例如 toWanTelecom4" />
+                                </div>
+
+                                <div class="form-row">
+                                    <label for="desired-source-target-list-family">Target List Family</label>
+                                    <select id="desired-source-target-list-family">
+                                        <option value="">自动识别 / 不指定</option>
+                                        <option value="ipv4">ipv4</option>
+                                        <option value="ipv6">ipv6</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-row form-row-full">
+                                    <label for="desired-source-line-comment-prefixes">Line Comment Prefixes（每行一个）</label>
+                                    <textarea
+                                            id="desired-source-line-comment-prefixes"
+                                            rows="4"
+                                            placeholder="#&#10;//&#10;;"
+                                    ></textarea>
+                                    <div class="field-help field-help-muted">
+                                        仅 plain_cidr 有效。匹配到的前缀行会被当作注释忽略。
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -662,7 +703,10 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
+                                <th>Format</th>
                                 <th>Path / URL</th>
+                                <th>Target List</th>
+                                <th>Target Family</th>
                                 <th>Headers</th>
                                 <th>Enabled</th>
                                 <th>Priority</th>
@@ -672,7 +716,7 @@
                             </thead>
                             <tbody id="current-sources-table-body">
                             <tr>
-                                <td colspan="8" class="empty-cell">尚未加载</td>
+                                <td colspan="11" class="empty-cell">尚未加载</td>
                             </tr>
                             </tbody>
                         </table>
@@ -690,7 +734,7 @@
                     <form id="current-source-form" class="form-grid">
                         <div class="form-row">
                             <label for="current-source-name">Name</label>
-                            <input id="current-source-name" type="text" placeholder="例如 current-local-2" />
+                            <input id="current-source-name" type="text" placeholder="例如 current-export-1" />
                         </div>
 
                         <div class="form-row">
@@ -701,9 +745,17 @@
                             </select>
                         </div>
 
+                        <div class="form-row">
+                            <label for="current-source-format">Format</label>
+                            <select id="current-source-format">
+                                <option value="json">json</option>
+                                <option value="plain_cidr">plain_cidr</option>
+                            </select>
+                        </div>
+
                         <div class="form-row form-row-full">
                             <label for="current-source-path">Path</label>
-                            <input id="current-source-path" type="text" placeholder="./data/current-2.json" />
+                            <input id="current-source-path" type="text" placeholder="./data/current-1.json" />
                             <div id="current-source-path-help" class="field-help">
                                 file 类型时请填写本地路径。
                             </div>
@@ -726,6 +778,36 @@
                             ></textarea>
                             <div class="field-help field-help-muted">
                                 URL 来源可选；file 来源通常不需要。
+                            </div>
+                        </div>
+
+                        <div id="current-source-target-fields" class="form-row form-row-full" style="display:none;">
+                            <div class="form-grid">
+                                <div class="form-row">
+                                    <label for="current-source-target-list-name">Target List Name</label>
+                                    <input id="current-source-target-list-name" type="text" placeholder="例如 toWanTelecom4" />
+                                </div>
+
+                                <div class="form-row">
+                                    <label for="current-source-target-list-family">Target List Family</label>
+                                    <select id="current-source-target-list-family">
+                                        <option value="">自动识别 / 不指定</option>
+                                        <option value="ipv4">ipv4</option>
+                                        <option value="ipv6">ipv6</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-row form-row-full">
+                                    <label for="current-source-line-comment-prefixes">Line Comment Prefixes（每行一个）</label>
+                                    <textarea
+                                            id="current-source-line-comment-prefixes"
+                                            rows="4"
+                                            placeholder="#&#10;//&#10;;"
+                                    ></textarea>
+                                    <div class="field-help field-help-muted">
+                                        仅 plain_cidr 有效。匹配到的前缀行会被当作注释忽略。
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
